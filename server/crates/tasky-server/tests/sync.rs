@@ -507,3 +507,184 @@ async fn final_state_is_independent_of_arrival_order() {
         assert_eq!(results[1], results[2], "round {round}");
     }
 }
+
+fn new_list(name: &str, kind: ListKind) -> OpAction {
+    OpAction::Create(EntityData::List(ListData {
+        name: name.into(),
+        kind: Some(kind),
+        body: None,
+    }))
+}
+
+fn entry(list: Uuid, text: &str) -> OpAction {
+    OpAction::Create(EntityData::ListEntry(ListEntryData {
+        list_id: list,
+        text: text.into(),
+        checked: false,
+        checked_by: Some(Uuid::now_v7()), // ignored: server-owned
+    }))
+}
+
+#[tokio::test]
+async fn default_list_is_a_grocery_list() {
+    let s = TestServer::start().await;
+    let anna = s.create_household("anna").await;
+    let snap = s.snapshot(&anna).await;
+    match &snap[0].data {
+        EntityData::List(l) => assert_eq!(l.kind, Some(ListKind::Grocery)),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn checklist_entries_sync_and_record_who_checked() {
+    let s = TestServer::start().await;
+    let anna = s.create_household("anna").await;
+    let bob = s.join(&anna, "bob").await;
+    let (list, e1, e2) = (Uuid::now_v7(), Uuid::now_v7(), Uuid::now_v7());
+    let res = s
+        .sync(
+            &anna,
+            0,
+            vec![
+                anna.op(list, new_list("Weekend", ListKind::Checklist)),
+                anna.op(e1, entry(list, "Call plumber")),
+                anna.op(e2, entry(list, "Water plants")),
+            ],
+        )
+        .await;
+    assert!(res.rejected.is_empty(), "{:?}", res.rejected);
+
+    // Concurrent: Bob checks an entry while Anna renames it; both survive.
+    s.sync(
+        &bob,
+        0,
+        vec![bob.op(e1, OpAction::SetListEntry(ListEntryField::Checked(true)))],
+    )
+    .await;
+    s.sync(
+        &anna,
+        0,
+        vec![anna.op(
+            e1,
+            OpAction::SetListEntry(ListEntryField::Text("Call the plumber".into())),
+        )],
+    )
+    .await;
+
+    let snap = s.snapshot(&anna).await;
+    let EntityData::ListEntry(e) = &find(&snap, e1).unwrap().data else {
+        panic!()
+    };
+    assert!(e.checked);
+    assert_eq!(e.checked_by, Some(bob.user.id));
+    assert_eq!(e.text, "Call the plumber");
+    let EntityData::ListEntry(e) = &find(&snap, e2).unwrap().data else {
+        panic!()
+    };
+    assert_eq!(e.checked_by, None, "client-sent checked_by is ignored");
+
+    // Checklist entries don't touch the grocery item catalog.
+    assert!(!snap.iter().any(|e| e.data.kind() == EntityKind::Item));
+
+    // Unchecking clears checked_by; deleting removes the entry.
+    s.sync(
+        &bob,
+        0,
+        vec![
+            bob.op(e1, OpAction::SetListEntry(ListEntryField::Checked(false))),
+            bob.op(e2, OpAction::Delete(EntityKind::ListEntry)),
+        ],
+    )
+    .await;
+    let snap = s.snapshot(&anna).await;
+    let EntityData::ListEntry(e) = &find(&snap, e1).unwrap().data else {
+        panic!()
+    };
+    assert_eq!((e.checked, e.checked_by), (false, None));
+    assert!(find(&snap, e2).is_none());
+
+    // Entries must reference a list in this household and have text.
+    let res = s
+        .sync(
+            &anna,
+            0,
+            vec![
+                anna.op(Uuid::now_v7(), entry(Uuid::now_v7(), "orphan")),
+                anna.op(Uuid::now_v7(), entry(list, "  ")),
+            ],
+        )
+        .await;
+    let codes: Vec<_> = res.rejected.iter().map(|r| r.code).collect();
+    assert_eq!(
+        codes,
+        [RejectCode::InvalidReference, RejectCode::Validation]
+    );
+}
+
+#[tokio::test]
+async fn notes_store_text_with_last_writer_wins() {
+    let s = TestServer::start().await;
+    let anna = s.create_household("anna").await;
+    let bob = s.join(&anna, "bob").await;
+    let note = Uuid::now_v7();
+    s.sync(
+        &anna,
+        0,
+        vec![anna.op(note, new_list("Ideas", ListKind::Note))],
+    )
+    .await;
+
+    let now = chrono::Utc::now().timestamp_millis();
+    let older = Op {
+        entity_id: note,
+        hlc: hlc_at(now - 1000, 0, "anna"),
+        action: OpAction::SetList(ListField::Body(Some("first draft".into()))),
+    };
+    let newer = Op {
+        entity_id: note,
+        hlc: hlc_at(now, 0, "bob"),
+        action: OpAction::SetList(ListField::Body(Some(
+            "Paint the hallway\nFix the bike".into(),
+        ))),
+    };
+    s.sync(&bob, 0, vec![newer]).await;
+    s.sync(&anna, 0, vec![older]).await;
+
+    let snap = s.snapshot(&anna).await;
+    let EntityData::List(l) = &find(&snap, note).unwrap().data else {
+        panic!()
+    };
+    assert_eq!(l.kind, Some(ListKind::Note));
+    assert_eq!(l.body.as_deref(), Some("Paint the hallway\nFix the bike"));
+}
+
+#[tokio::test]
+async fn lists_from_older_clients_default_to_no_kind() {
+    // An older app sends a list without `kind`/`body`; it's accepted and stored as-is
+    // (clients treat a missing kind as grocery).
+    let s = TestServer::start().await;
+    let anna = s.create_household("anna").await;
+    let list = Uuid::now_v7();
+    let body = serde_json::json!({
+        "since": 0,
+        "ops": [{
+            "entity_id": list,
+            "hlc": anna.hlc(),
+            "action": {"type": "create", "value": {"type": "list", "value": {"name": "Old app list"}}}
+        }]
+    });
+    let res: SyncResponse = s
+        .post(
+            Some(&anna.token),
+            &format!("/households/{}/sync", anna.household),
+            &body,
+        )
+        .await
+        .unwrap();
+    assert!(res.rejected.is_empty());
+    let EntityData::List(l) = &find(&res.changes, list).unwrap().data else {
+        panic!()
+    };
+    assert_eq!((l.kind, l.body.as_deref()), (None, None));
+}

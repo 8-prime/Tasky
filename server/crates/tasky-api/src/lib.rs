@@ -218,6 +218,7 @@ pub enum EntityKind {
     Meal,
     MealIngredient,
     PlanEntry,
+    ListEntry,
 }
 
 impl EntityKind {
@@ -229,6 +230,7 @@ impl EntityKind {
             EntityKind::Meal => "meal",
             EntityKind::MealIngredient => "meal_ingredient",
             EntityKind::PlanEntry => "plan_entry",
+            EntityKind::ListEntry => "list_entry",
         }
     }
 
@@ -240,6 +242,7 @@ impl EntityKind {
             "meal" => EntityKind::Meal,
             "meal_ingredient" => EntityKind::MealIngredient,
             "plan_entry" => EntityKind::PlanEntry,
+            "list_entry" => EntityKind::ListEntry,
             _ => return None,
         })
     }
@@ -257,11 +260,39 @@ pub struct ItemData {
     pub default_unit: Option<String>,
 }
 
-/// A shared list, e.g. "Groceries". Each new household gets one automatically.
+/// What a list holds. The kind is chosen when the list is created and can't be changed later.
+#[typeshare]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ListKind {
+    /// Shopping list: lines are catalog items with amounts summed from contributions.
+    Grocery,
+    /// Plain to-do style checklist made of `list_entry`s.
+    Checklist,
+    /// Free-text note stored in `body`.
+    Note,
+}
+
+/// A shared list, e.g. "Groceries". Each new household gets one grocery list automatically.
 #[typeshare]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ListData {
     pub name: String,
+    /// Missing or null means `grocery` (lists created before kinds existed).
+    pub kind: Option<ListKind>,
+    /// Text of a `note` list. Unused for other kinds.
+    pub body: Option<String>,
+}
+
+/// One line of a `checklist` list.
+#[typeshare]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ListEntryData {
+    pub list_id: Uuid,
+    pub text: String,
+    pub checked: bool,
+    /// Set by the server to whoever last set `checked = true`. Client values are ignored.
+    pub checked_by: Option<Uuid>,
 }
 
 /// One reason an item is on a list. A list line `(list_id, item_id)` is the sum of its
@@ -344,6 +375,7 @@ pub enum EntityData {
     Meal(MealData),
     MealIngredient(MealIngredientData),
     PlanEntry(PlanEntryData),
+    ListEntry(ListEntryData),
 }
 
 impl EntityData {
@@ -355,6 +387,7 @@ impl EntityData {
             EntityData::Meal(_) => EntityKind::Meal,
             EntityData::MealIngredient(_) => EntityKind::MealIngredient,
             EntityData::PlanEntry(_) => EntityKind::PlanEntry,
+            EntityData::ListEntry(_) => EntityKind::ListEntry,
         }
     }
 }
@@ -376,6 +409,17 @@ pub enum ItemField {
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum ListField {
     Name(String),
+    Body(Option<String>),
+}
+
+#[typeshare]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum ListEntryField {
+    ListId(Uuid),
+    Text(String),
+    /// Check (true) or uncheck (false). The server sets `checked_by` to match.
+    Checked(bool),
 }
 
 #[typeshare]
@@ -442,6 +486,7 @@ pub enum OpAction {
     SetMeal(MealField),
     SetMealIngredient(MealIngredientField),
     SetPlanEntry(PlanEntryField),
+    SetListEntry(ListEntryField),
 }
 
 /// A single change made by a client. Applying an op twice has no extra effect,

@@ -4,7 +4,7 @@ use axum::{Json, extract::State};
 use sqlx::SqliteConnection;
 use tasky_api::{
     AuthResponse, CreateHouseholdRequest, EntityData, ErrorCode, JoinHouseholdRequest, ListData,
-    LiveEventKind, LoginRequest, Op, OpAction, User,
+    ListKind, LiveEventKind, LoginRequest, Op, OpAction, User,
 };
 use uuid::Uuid;
 
@@ -122,6 +122,8 @@ pub async fn create_household(
             hlc: server_hlc(),
             action: OpAction::Create(EntityData::List(ListData {
                 name: DEFAULT_LIST_NAME.into(),
+                kind: Some(ListKind::Grocery),
+                body: None,
             })),
         };
         let outcome = apply_ops(&mut tx, &ctx, &[default_list]).await?;
