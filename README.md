@@ -63,4 +63,4 @@ cargo clippy --all-targets
 ../scripts/gen-api.sh      # regenerate Kotlin models after changing tasky-api (needs: cargo install typeshare-cli)
 ```
 
-Layout: `server/` (Rust workspace) · `api/kotlin/` (generated models) · `docs/` · `android/` (coming next).
+Layout: `server/` (Rust workspace) · `api/kotlin/` (generated models) · `docs/` · `android/` (Kotlin + Compose app, see [android/README.md](android/README.md)).
