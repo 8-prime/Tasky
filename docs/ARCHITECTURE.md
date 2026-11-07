@@ -12,7 +12,7 @@ Tasky is a shared weekly meal planner and shopping list for a household. It has 
 | Joining | Invite codes created by any member: `XXXX-XXXX`, valid for 48h, single-use. |
 | Meal plan | Per day and slot (breakfast/lunch/dinner). Each entry is for one person or for the whole household. Weeks start on Monday. |
 | Meals | A household catalog of known meals with optional ingredients (item + amount + unit). Recipes come later. |
-| Shopping list | Shared lists ("Groceries" by default). A line is an item, and its amount is the sum of its contributions, so amounts from different meals add up. Personal meals feed the shared list too. |
+| Lists | Shared lists of three kinds: grocery ("Groceries" by default), checklist and text note. A line is an item, and its amount is the sum of its contributions, so amounts from different meals add up. Personal meals feed the shared list too. |
 | Adding to the list | Explicit: per plan entry or for a whole week, and the user can untick what they already have. No pantry tracking; people check off what they already have at home. |
 | Units | Metric. Converted within a dimension (g/kg, ml/l/tsp/tbsp, pcs); different dimensions are shown side by side. |
 | Language | English. All strings live in Android resources. |

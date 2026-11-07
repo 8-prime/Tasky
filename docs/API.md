@@ -67,7 +67,8 @@ Rules:
 | Kind | Fields | Notes |
 |---|---|---|
 | `item` | `name`, `category?`, `default_unit?` | Household catalog of groceries. Names are unique ignoring case and whitespace (see aliases). |
-| `list` | `name` | Every new household gets a "Groceries" list. |
+| `list` | `name`, `kind?` (`grocery`/`checklist`/`note`), `body?` | Every new household gets a "Groceries" grocery list. A missing `kind` means `grocery`. The kind is set on create and can't be changed. `body` is the text of a `note`. |
+| `list_entry` | `list_id`, `text`, `checked`, `checked_by?` | One line of a `checklist` list. `checked_by` is set by the server. |
 | `contribution` | `list_id`, `item_id`, `amount?`, `unit?`, `plan_entry_id?`, `note?`, `purchased`, `purchased_by?`, `archived` | One reason an item is on a list. |
 | `meal` | `name`, `default_servings`, `notes?`, `url?` | Known-meals catalog. Recipes are out of scope for now. |
 | `meal_ingredient` | `meal_id`, `item_id`, `amount?`, `unit?`, `note?` | Ingredients of a meal. |
@@ -75,6 +76,7 @@ Rules:
 
 Validation limits:
 - **Names:** 1–200 characters, and not blank.
+- **Checklist entry text:** 1–1000 characters, and not blank. **Note body:** ≤100000 characters.
 - **Category:** ≤64 characters.
 - **Unit:** ≤32 characters.
 - **Notes:** ≤1000 characters (meal notes ≤10000).
@@ -101,6 +103,15 @@ A **list line** is `(list_id, item_id)`. Its contributions are all `contribution
 - **Already have it at home:** the user just checks the line off. There's no pantry tracking.
 - **Sort:** by item `category`, then by name. There's no manual ordering in v1.
 - **Show who checked:** `purchased_by` (set by the server).
+
+### Checklists and notes
+
+- **Checklist** (`kind = checklist`): its lines are `list_entry` records with free text, not catalog items. They have no amounts, they don't appear in grocery autocomplete, and they're never merged by name.
+  - Check or uncheck an entry with `set_list_entry / checked`. The server records who checked it in `checked_by`.
+  - "Clear checked" deletes the checked entries.
+  - Order: unchecked first, in creation order (UUIDv7 ids sort by time), then checked.
+- **Note** (`kind = note`): the text lives in the list's `body`, set with `set_list / body`. Edits are last-writer-wins on the whole text, so when two people edit the same note at the same moment, the later save wins. Save while typing with a debounce of about 1 s, and on leaving the screen.
+- **Compatibility:** apps from before list kinds can't decode `list_entry` and treat every list as a grocery list. Update all phones together with the server.
 
 ### Meal planning (computed on the client)
 
@@ -142,7 +153,8 @@ An op changes one entity:
 | `create` | `EntityData` (`{"type": kind, "value": {...all fields}}`) | Creates the entity. If it exists, each field is set by LWW. Brings back a deleted entity if the create is newer than the delete. |
 | `delete` | kind, e.g. `"contribution"` | Tombstones the entity, if newer than its last create/delete. |
 | `set_item` | `{"type": "name" \| "category" \| "default_unit", "value": …}` | Sets one field (LWW). |
-| `set_list` | `name` | |
+| `set_list` | `name`, `body` | |
+| `set_list_entry` | `list_id`, `text`, `checked` | `checked_by` is set by the server. |
 | `set_contribution` | `list_id`, `amount`, `unit`, `note`, `purchased`, `archived` | `purchased_by` is set by the server. |
 | `set_meal` | `name`, `default_servings`, `notes`, `url` | |
 | `set_meal_ingredient` | `item_id`, `amount`, `unit`, `note` | |
