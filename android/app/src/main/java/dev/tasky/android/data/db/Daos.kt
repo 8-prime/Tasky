@@ -107,6 +107,13 @@ interface QueryDao {
     @Query("SELECT * FROM plan_entries WHERE date >= :from AND date <= :to ORDER BY date")
     fun planEntries(from: String, to: String): Flow<List<PlanEntryRow>>
 
+    @Query("SELECT * FROM plan_entries WHERE date >= :from AND date <= :to ORDER BY date")
+    suspend fun planEntriesNow(from: String, to: String): List<PlanEntryRow>
+
+    @Query("SELECT * FROM meals") suspend fun mealsNow(): List<MealRow>
+    @Query("SELECT * FROM meal_ingredients") suspend fun allIngredientsNow(): List<MealIngredientRow>
+    @Query("SELECT * FROM items") suspend fun itemsNow(): List<ItemRow>
+
     @Query("SELECT * FROM plan_entries WHERE mealId = :mealId") suspend fun planEntriesForMeal(mealId: String): List<PlanEntryRow>
 
     @Query("SELECT * FROM members ORDER BY joinedAtMs") fun members(): Flow<List<MemberRow>>

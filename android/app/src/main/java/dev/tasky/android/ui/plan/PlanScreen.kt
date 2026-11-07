@@ -26,7 +26,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
@@ -77,8 +76,8 @@ private sealed interface PlanDialog {
     data class Edit(val date: LocalDate, val slot: MealSlot, val entry: PlanEntryRow?) : PlanDialog
     data class Actions(val entry: EntryView) : PlanDialog
     data class Delete(val entry: EntryView) : PlanDialog
-    /** Add to list for one entry, or the whole week when null. */
-    data class AddToList(val entry: PlanEntryRow?) : PlanDialog
+    /** Add to list for one entry, or the whole week when [entry] is null. Rows are loaded before showing. */
+    data class AddToList(val entry: PlanEntryRow?, val rows: List<ProposalRow>) : PlanDialog
 }
 
 @Composable
@@ -98,6 +97,10 @@ fun PlanScreen(vm: PlanViewModel) {
     val today = LocalDate.now()
     val weekFormat = remember { DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()) }
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    fun openAddToList(entry: PlanEntryRow?) {
+        scope.launch { dialog = PlanDialog.AddToList(entry, vm.proposals(entry)) }
+    }
     LaunchedEffect(s.weekStart) {
         val index = if (MealPlanning.weekStart(today) == s.weekStart) today.dayOfWeek.value - 1 else 0
         listState.scrollToItem(index)
@@ -122,7 +125,7 @@ fun PlanScreen(vm: PlanViewModel) {
                 },
                 actions = {
                     IconButton(onClick = vm::thisWeek) { Icon(Icons.Filled.Today, stringResource(R.string.plan_this_week)) }
-                    IconButton(onClick = { dialog = PlanDialog.AddToList(null) }) {
+                    IconButton(onClick = { openAddToList(null) }) {
                         Icon(Icons.Filled.AddShoppingCart, stringResource(R.string.plan_add_week_to_list))
                     }
                 },
@@ -156,7 +159,7 @@ fun PlanScreen(vm: PlanViewModel) {
             d.entry,
             onDismiss = { dialog = null },
             onEdit = { dialog = PlanDialog.Edit(LocalDate.parse(d.entry.row.date), mealSlotOf(d.entry.row.slot), d.entry.row) },
-            onAddToList = { dialog = PlanDialog.AddToList(d.entry.row) },
+            onAddToList = { openAddToList(d.entry.row) },
             onDelete = { dialog = PlanDialog.Delete(d.entry) },
         )
         is PlanDialog.Delete -> ConfirmDialog(
@@ -168,7 +171,7 @@ fun PlanScreen(vm: PlanViewModel) {
             vm.delete(d.entry.row)
             dialog = null
         }
-        is PlanDialog.AddToList -> AddToListDialog(vm, s, d.entry, onDismiss = { dialog = null })
+        is PlanDialog.AddToList -> AddToListDialog(vm, s, d.entry, d.rows, onDismiss = { dialog = null })
     }
 }
 
@@ -344,18 +347,11 @@ private fun EntryEditor(
 }
 
 @Composable
-private fun AddToListDialog(vm: PlanViewModel, s: PlanState, entry: PlanEntryRow?, onDismiss: () -> Unit) {
-    var rows by remember { mutableStateOf<List<ProposalRow>?>(null) }
-    val selected = remember { mutableStateListOf<String>() }
+private fun AddToListDialog(vm: PlanViewModel, s: PlanState, entry: PlanEntryRow?, rows: List<ProposalRow>, onDismiss: () -> Unit) {
+    // Ingredients already put on a list from these entries start unticked.
+    val selected = remember(rows) { mutableStateListOf<String>().apply { addAll(rows.filter { !it.alreadyAdded }.map { it.proposal.id }) } }
     var listId by rememberSaveable { mutableStateOf(s.lists.firstOrNull()?.id) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(entry?.id, s.weekStart) {
-        val r = vm.proposals(entry)
-        rows = r
-        selected.clear()
-        // Ingredients already put on a list from this entry start unticked.
-        selected.addAll(r.filter { !it.alreadyAdded }.map { it.proposal.id })
-    }
     val dayFormat = remember { DateTimeFormatter.ofPattern("EEE", Locale.getDefault()) }
 
     AlertDialog(
@@ -364,7 +360,6 @@ private fun AddToListDialog(vm: PlanViewModel, s: PlanState, entry: PlanEntryRow
         text = {
             val r = rows
             when {
-                r == null -> CircularProgressIndicator()
                 r.isEmpty() -> Text(stringResource(R.string.plan_nothing_to_add))
                 else -> Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text(stringResource(R.string.plan_untick_help), style = MaterialTheme.typography.bodySmall)
@@ -403,7 +398,7 @@ private fun AddToListDialog(vm: PlanViewModel, s: PlanState, entry: PlanEntryRow
             TextButton(
                 enabled = selected.isNotEmpty() && listId != null,
                 onClick = {
-                    val chosen = rows.orEmpty().map { it.proposal }.filter { it.id in selected }
+                    val chosen = rows.map { it.proposal }.filter { it.id in selected }
                     scope.launch {
                         vm.addToList(listId!!, chosen)
                         onDismiss()

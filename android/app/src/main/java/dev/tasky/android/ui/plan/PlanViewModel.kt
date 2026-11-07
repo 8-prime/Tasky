@@ -18,7 +18,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -111,12 +110,13 @@ class PlanViewModel(private val repo: TaskyRepository, private val sessions: Ses
 
     /** The checklist for one entry, or the whole week if [entry] is null. */
     suspend fun proposals(entry: PlanEntryRow?): List<ProposalRow> {
-        val entries = if (entry != null) listOf(entry) else entries.first()
+        val start = _week.value
+        val entries = if (entry != null) listOf(entry) else q.planEntriesNow(start.toString(), start.plusDays(6).toString())
         val proposals = MealPlanning.propose(
             entries = entries,
-            meals = q.meals().first().associateBy { it.id },
-            ingredientsByMeal = q.allIngredients().first().groupBy { it.mealId },
-            items = q.items().first().associateBy { it.id },
+            meals = q.mealsNow().associateBy { it.id },
+            ingredientsByMeal = q.allIngredientsNow().groupBy { it.mealId },
+            items = q.itemsNow().associateBy { it.id },
             memberCount = q.memberCount(),
         )
         val existing = repo.existingContributions(proposals.map { it.id })
