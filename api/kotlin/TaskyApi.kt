@@ -88,6 +88,9 @@ sealed class EntityData {
 	@Serializable
 	@SerialName("plan_entry")
 	data class PlanEntry(val value: PlanEntryData): EntityData()
+	@Serializable
+	@SerialName("list_entry")
+	data class ListEntry(val value: ListEntryData): EntityData()
 }
 
 /// Current state of a synced entity.
@@ -194,10 +197,38 @@ data class JoinHouseholdRequest (
 	val device_name: String
 )
 
-/// A shared list, e.g. "Groceries". Each new household gets one automatically.
+/// What a list holds. The kind is chosen when the list is created and can't be changed later.
+@Serializable
+enum class ListKind(val string: String) {
+	/// Shopping list: lines are catalog items with amounts summed from contributions.
+	@SerialName("grocery")
+	Grocery("grocery"),
+	/// Plain to-do style checklist made of `list_entry`s.
+	@SerialName("checklist")
+	Checklist("checklist"),
+	/// Free-text note stored in `body`.
+	@SerialName("note")
+	Note("note"),
+}
+
+/// A shared list, e.g. "Groceries". Each new household gets one grocery list automatically.
 @Serializable
 data class ListData (
-	val name: String
+	val name: String,
+	/// Missing or null means `grocery` (lists created before kinds existed).
+	val kind: ListKind? = null,
+	/// Text of a `note` list. Unused for other kinds.
+	val body: String? = null
+)
+
+/// One line of a `checklist` list.
+@Serializable
+data class ListEntryData (
+	val list_id: String,
+	val text: String,
+	val checked: Boolean,
+	/// Set by the server to whoever last set `checked = true`. Client values are ignored.
+	val checked_by: String? = null
 )
 
 @Serializable
@@ -287,6 +318,9 @@ sealed class OpAction {
 	@Serializable
 	@SerialName("set_plan_entry")
 	data class SetPlanEntry(val value: PlanEntryField): OpAction()
+	@Serializable
+	@SerialName("set_list_entry")
+	data class SetListEntry(val value: ListEntryField): OpAction()
 }
 
 /// A single change made by a client. Applying an op twice has no extra effect,
@@ -459,6 +493,8 @@ enum class EntityKind(val string: String) {
 	MealIngredient("meal_ingredient"),
 	@SerialName("plan_entry")
 	PlanEntry("plan_entry"),
+	@SerialName("list_entry")
+	ListEntry("list_entry"),
 }
 
 @Serializable
@@ -475,10 +511,27 @@ sealed class ItemField {
 }
 
 @Serializable
+sealed class ListEntryField {
+	@Serializable
+	@SerialName("list_id")
+	data class ListId(val value: String): ListEntryField()
+	@Serializable
+	@SerialName("text")
+	data class Text(val value: String): ListEntryField()
+	/// Check (true) or uncheck (false). The server sets `checked_by` to match.
+	@Serializable
+	@SerialName("checked")
+	data class Checked(val value: Boolean): ListEntryField()
+}
+
+@Serializable
 sealed class ListField {
 	@Serializable
 	@SerialName("name")
 	data class Name(val value: String): ListField()
+	@Serializable
+	@SerialName("body")
+	data class Body(val value: String?): ListField()
 }
 
 @Serializable

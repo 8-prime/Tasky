@@ -121,6 +121,7 @@ fn action_kind(action: &OpAction) -> EntityKind {
         OpAction::SetMeal(_) => EntityKind::Meal,
         OpAction::SetMealIngredient(_) => EntityKind::MealIngredient,
         OpAction::SetPlanEntry(_) => EntityKind::PlanEntry,
+        OpAction::SetListEntry(_) => EntityKind::ListEntry,
     }
 }
 
@@ -146,6 +147,7 @@ fn field_update(action: &OpAction) -> anyhow::Result<Option<(String, Value)>> {
         OpAction::SetMeal(f) => serde_json::to_value(f)?,
         OpAction::SetMealIngredient(f) => serde_json::to_value(f)?,
         OpAction::SetPlanEntry(f) => serde_json::to_value(f)?,
+        OpAction::SetListEntry(f) => serde_json::to_value(f)?,
     };
     untag(tagged).map(Some)
 }
@@ -180,8 +182,10 @@ async fn apply_op(conn: &mut SqliteConnection, ctx: &Ctx, op: &Op) -> Result<boo
     match &op.action {
         OpAction::Create(data) => {
             let mut fields = data_fields(data)?;
-            // Server-owned: always derived from `purchased` in `after_write`.
-            fields.remove("purchased_by");
+            // Server-owned: always derived from the flag field in `after_write`.
+            if let Some((_, by)) = attribution(kind) {
+                fields.remove(by);
+            }
             match existing {
                 None => {
                     if let EntityData::Item(item) = data
@@ -220,16 +224,16 @@ async fn apply_op(conn: &mut SqliteConnection, ctx: &Ctx, op: &Op) -> Result<boo
                     // Fields merge even under a tombstone, so the result doesn't depend on whether
                     // a later revive arrives before or after this op.
                     let mut written = false;
-                    let mut purchased_written = false;
+                    let mut flag_written = false;
                     for (field, value) in fields {
                         let w = row.set_field(&field, value, hlc);
-                        purchased_written |= w && field == "purchased";
+                        flag_written |= w && is_attributed_flag(kind, &field);
                         written |= w;
                     }
                     if !written && !revived {
                         return Ok(false);
                     }
-                    after_write(&mut row, ctx, hlc, purchased_written);
+                    after_write(&mut row, ctx, hlc, flag_written);
                     finalize(conn, ctx, &mut row).await?;
                     // Hidden changes to a still-deleted entity don't need to reach clients.
                     let visible = !(was_deleted && row.deleted);
@@ -273,7 +277,7 @@ async fn apply_op(conn: &mut SqliteConnection, ctx: &Ctx, op: &Op) -> Result<boo
             if !row.set_field(&field, value, hlc) {
                 return Ok(false);
             }
-            after_write(&mut row, ctx, hlc, field == "purchased");
+            after_write(&mut row, ctx, hlc, is_attributed_flag(kind, &field));
             finalize(conn, ctx, &mut row).await?;
             // Writes to a deleted entity are kept (in case it's revived) but stay hidden.
             save(
@@ -292,22 +296,32 @@ async fn apply_op(conn: &mut SqliteConnection, ctx: &Ctx, op: &Op) -> Result<boo
     }
 }
 
-/// Fields the server derives itself: whoever checks off a contribution becomes its `purchased_by`.
-fn after_write(row: &mut Row, ctx: &Ctx, hlc: &str, purchased_written: bool) {
-    if row.kind == EntityKind::Contribution && purchased_written {
-        let purchased = row
-            .data
-            .get("purchased")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let by = if purchased {
-            json!(ctx.user_id)
-        } else {
-            Value::Null
-        };
-        row.data.insert("purchased_by".into(), by);
-        row.clocks.insert("purchased_by".into(), hlc.to_owned());
+/// Server-owned attribution: (flag field, field recording who last set the flag to true).
+fn attribution(kind: EntityKind) -> Option<(&'static str, &'static str)> {
+    match kind {
+        EntityKind::Contribution => Some(("purchased", "purchased_by")),
+        EntityKind::ListEntry => Some(("checked", "checked_by")),
+        _ => None,
     }
+}
+
+fn is_attributed_flag(kind: EntityKind, field: &str) -> bool {
+    attribution(kind).is_some_and(|(flag, _)| flag == field)
+}
+
+/// Fields the server derives itself: whoever checks something off (a contribution or a
+/// checklist entry) is recorded as `purchased_by` / `checked_by`.
+fn after_write(row: &mut Row, ctx: &Ctx, hlc: &str, flag_written: bool) {
+    let Some((flag, by_field)) = attribution(row.kind) else {
+        return;
+    };
+    if !flag_written {
+        return;
+    }
+    let set = row.data.get(flag).and_then(Value::as_bool).unwrap_or(false);
+    let by = if set { json!(ctx.user_id) } else { Value::Null };
+    row.data.insert(by_field.into(), by);
+    row.clocks.insert(by_field.into(), hlc.to_owned());
 }
 
 /// Maps merged item IDs to their targets, then checks the entity is valid and its
@@ -388,7 +402,14 @@ async fn validate(
             check_opt_text(&d.category, "category", 64)?;
             check_opt_text(&d.default_unit, "default_unit", 32)?;
         }
-        EntityData::List(d) => check_text(&d.name, "name", 200, true)?,
+        EntityData::List(d) => {
+            check_text(&d.name, "name", 200, true)?;
+            check_opt_text(&d.body, "body", 100_000)?;
+        }
+        EntityData::ListEntry(d) => {
+            check_text(&d.text, "text", 1000, true)?;
+            check_ref(conn, ctx, d.list_id, EntityKind::List).await?;
+        }
         EntityData::Contribution(ContributionData {
             list_id,
             item_id,
@@ -751,10 +772,7 @@ mod tests {
             (OpAction::SetItem(ItemField::Name("x".into())), item()),
             (OpAction::SetItem(ItemField::Category(None)), item()),
             (OpAction::SetItem(ItemField::DefaultUnit(None)), item()),
-            (
-                OpAction::SetList(ListField::Name("x".into())),
-                EntityData::List(ListData { name: "l".into() }),
-            ),
+            (OpAction::SetList(ListField::Name("x".into())), list()),
             (
                 OpAction::SetContribution(ContributionField::ListId(id)),
                 contribution(),
@@ -821,6 +839,16 @@ mod tests {
                 plan(),
             ),
             (OpAction::SetPlanEntry(PlanEntryField::Note(None)), plan()),
+            (OpAction::SetList(ListField::Body(None)), list()),
+            (OpAction::SetListEntry(ListEntryField::ListId(id)), entry()),
+            (
+                OpAction::SetListEntry(ListEntryField::Text("x".into())),
+                entry(),
+            ),
+            (
+                OpAction::SetListEntry(ListEntryField::Checked(true)),
+                entry(),
+            ),
         ];
         for (action, data) in samples {
             let (field, _) = field_update(&action).unwrap().unwrap();
@@ -834,6 +862,21 @@ mod tests {
         }
     }
 
+    fn list() -> EntityData {
+        EntityData::List(ListData {
+            name: "l".into(),
+            kind: Some(ListKind::Checklist),
+            body: None,
+        })
+    }
+    fn entry() -> EntityData {
+        EntityData::ListEntry(ListEntryData {
+            list_id: Uuid::nil(),
+            text: "t".into(),
+            checked: false,
+            checked_by: None,
+        })
+    }
     fn item() -> EntityData {
         EntityData::Item(ItemData {
             name: "i".into(),
