@@ -1,8 +1,25 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
+}
+
+/** Server the app suggests during onboarding. Override with `-PtaskyServerUrl=http://10.0.2.2:8080`. */
+val taskyServerUrl: String = providers.gradleProperty("taskyServerUrl").getOrElse("https://tasky.8-prime.dev")
+
+/**
+ * Release signing is read from a properties file outside the repo (never committed):
+ * `~/.config/tasky-android/keystore.properties` (or `-PtaskyKeystoreProperties=<path>`) with
+ * `storeFile`, `storePassword`, `keyAlias`, `keyPassword`. Without it, release APKs are unsigned.
+ */
+val keystorePropertiesFile: File = providers.gradleProperty("taskyKeystoreProperties")
+    .map { file(it) }
+    .getOrElse(File(System.getProperty("user.home"), ".config/tasky-android/keystore.properties"))
+val keystoreProperties: Properties? = keystorePropertiesFile.takeIf { it.isFile }?.let { f ->
+    Properties().apply { f.inputStream().use(::load) }
 }
 
 android {
@@ -18,6 +35,19 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
+        buildConfigField("String", "DEFAULT_SERVER_URL", "\"$taskyServerUrl\"")
+    }
+
+    signingConfigs {
+        if (keystoreProperties != null) {
+            create("release") {
+                val path = keystoreProperties.getProperty("storeFile")
+                storeFile = File(path).let { if (it.isAbsolute) it else File(keystorePropertiesFile.parentFile, path) }
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -25,9 +55,11 @@ android {
             applicationIdSuffix = ".debug"
         }
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // R8 stays off until the minified build has been checked on a device (kotlinx.serialization
+            // models and type-safe navigation routes rely on generated serializers).
+            isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
 

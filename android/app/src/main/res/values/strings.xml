@@ -41,6 +41,7 @@
     <string name="onboarding_server_title">Your Tasky server</string>
     <string name="onboarding_server_url">Server address</string>
     <string name="onboarding_server_hint">tasky.example.com</string>
+    <string name="onboarding_server_help">For your own server, e.g. https://tasky.example.com or http://10.0.2.2:8080 (debug builds only).</string>
     <string name="onboarding_connected">Connected to %1$s %2$s</string>
     <string name="onboarding_create">Create a household</string>
     <string name="onboarding_create_desc">You run the server and need the creation token from its log.</string>

@@ -88,7 +88,8 @@ class ScreensTest {
             repo.addToList(list, "tomatoes", 2.0, "pcs")
             repo.addToList(list, "Milk", 1.0, "l", category = "Dairy")
         }
-        compose.setContent { TaskyTheme { ShoppingListScreen(ShoppingListViewModel(repo)) } }
+        val vm = ShoppingListViewModel(repo)
+        compose.setContent { TaskyTheme { ShoppingListScreen(vm) } }
         waitFor("500 g + 2 pcs")
         compose.onNodeWithText("Groceries").assertExists()
         compose.onNodeWithText("Produce").assertExists()
@@ -155,7 +156,8 @@ class ScreensTest {
             )
         }
         val sessions = dev.tasky.android.data.SessionStore(ApplicationProvider.getApplicationContext(), PlainBox)
-        compose.setContent { TaskyTheme { PlanScreen(PlanViewModel(repo, sessions)) } }
+        val vm = PlanViewModel(repo, sessions)
+        compose.setContent { TaskyTheme { PlanScreen(vm) } }
         waitFor("Curry")
         compose.onNode(hasContentDescription("Add week to list")).performClick()
         waitFor("Coconut milk")
@@ -189,10 +191,13 @@ class ScreensTest {
             sessionApi = { sessions.current?.let { dev.tasky.android.api.ApiClient(http, it.serverUrl, it.token) } },
             onSignedIn = { signedIn = true },
         )
-        val vm = dev.tasky.android.ui.onboarding.OnboardingViewModel(account, null)
+        val vm = dev.tasky.android.ui.onboarding.OnboardingViewModel(account, null, dev.tasky.android.BuildConfig.DEFAULT_SERVER_URL)
         compose.setContent { TaskyTheme { dev.tasky.android.ui.onboarding.OnboardingScreen(vm) } }
 
-        compose.onNode(hasSetTextAction() and hasText("Server address")).performTextInput(server + "/")
+        // The build's default server is prefilled; switch to the test server.
+        compose.onNodeWithText(dev.tasky.android.BuildConfig.DEFAULT_SERVER_URL).assertExists()
+        compose.onNode(hasText("Change server") and hasClickAction()).performClick()
+        compose.onNode(hasSetTextAction() and hasText("Server address")).performTextReplacement(server + "/")
         compose.onNode(hasText("Continue") and hasClickAction()).performClick()
         waitFor("Create a household")
         compose.onNodeWithText("Connected to", substring = true).assertExists()

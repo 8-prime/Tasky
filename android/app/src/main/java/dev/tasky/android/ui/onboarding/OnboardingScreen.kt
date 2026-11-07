@@ -93,15 +93,21 @@ private fun ServerStep(s: OnboardingState, vm: OnboardingViewModel) {
     Text(stringResource(R.string.onboarding_welcome), style = MaterialTheme.typography.bodyLarge)
     Spacer(Modifier.height(8.dp))
     Text(stringResource(R.string.onboarding_server_title), style = MaterialTheme.typography.titleMedium)
-    Input(
-        value = s.serverInput,
-        onChange = { vm.edit { copy(serverInput = it) } },
-        label = R.string.onboarding_server_url,
-        placeholder = R.string.onboarding_server_hint,
-        error = s.fieldErrors[Field.Server],
-        keyboard = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, autoCorrectEnabled = false),
-        onIme = { vm.checkServer() },
-    )
+    if (s.editServer) {
+        Input(
+            value = s.serverInput,
+            onChange = { vm.edit { copy(serverInput = it) } },
+            label = R.string.onboarding_server_url,
+            placeholder = R.string.onboarding_server_hint,
+            error = s.fieldErrors[Field.Server],
+            help = R.string.onboarding_server_help,
+            keyboard = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, autoCorrectEnabled = false),
+            onIme = { vm.checkServer() },
+        )
+    } else {
+        Text(s.serverInput, style = MaterialTheme.typography.bodyLarge)
+        TextButton(onClick = vm::changeServer) { Text(stringResource(R.string.onboarding_change_server)) }
+    }
     SubmitButton(R.string.action_continue, s.busy) { vm.checkServer() }
 }
 
@@ -111,7 +117,7 @@ private fun ChooseStep(s: OnboardingState, vm: OnboardingViewModel) {
     Choice(R.string.onboarding_create, R.string.onboarding_create_desc) { vm.goTo(OnboardingStep.Create) }
     Choice(R.string.onboarding_join, R.string.onboarding_join_desc) { vm.goTo(OnboardingStep.Join) }
     Choice(R.string.onboarding_login, R.string.onboarding_login_desc) { vm.goTo(OnboardingStep.Login) }
-    TextButton(onClick = { vm.goTo(OnboardingStep.Server) }) { Text(stringResource(R.string.onboarding_change_server)) }
+    TextButton(onClick = vm::changeServer) { Text(stringResource(R.string.onboarding_change_server)) }
 }
 
 @Composable

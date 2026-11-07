@@ -17,6 +17,8 @@ enum class OnboardingStep { Server, Choose, Create, Join, Login }
 data class OnboardingState(
     val step: OnboardingStep = OnboardingStep.Server,
     val serverInput: String = "",
+    /** The server field is hidden behind "Change server" while a default/known server is set. */
+    val editServer: Boolean = false,
     val serverUrl: String? = null,
     val serverInfo: ServerInfo? = null,
     val setupToken: String = "",
@@ -46,8 +48,11 @@ object Rules {
 class OnboardingViewModel(
     private val account: AccountRepository,
     lastServer: String?,
+    /** BuildConfig.DEFAULT_SERVER_URL */
+    defaultServer: String,
 ) : ViewModel() {
-    private val _state = MutableStateFlow(OnboardingState(serverInput = lastServer.orEmpty()))
+    private val initialServer = lastServer?.takeIf { it.isNotBlank() } ?: defaultServer
+    private val _state = MutableStateFlow(OnboardingState(serverInput = initialServer, editServer = initialServer.isBlank()))
     val state: StateFlow<OnboardingState> = _state.asStateFlow()
 
     fun edit(transform: OnboardingState.() -> OnboardingState) =
@@ -55,23 +60,26 @@ class OnboardingViewModel(
 
     fun goTo(step: OnboardingStep) = edit { copy(step = step, password = "") }
 
+    /** Shows the server address field (for a self-hosted or local development server). */
+    fun changeServer() = edit { copy(step = OnboardingStep.Server, editServer = true, password = "") }
+
     /** From an invite link: tasky://join?server=…&code=… */
     fun openInvite(server: String, code: String) {
-        _state.update { OnboardingState(serverInput = server, inviteCode = code) }
+        _state.update { OnboardingState(serverInput = server, inviteCode = code, editServer = false) }
         checkServer(then = OnboardingStep.Join)
     }
 
     fun checkServer(then: OnboardingStep = OnboardingStep.Choose) {
         val url = ServerUrl.parse(_state.value.serverInput)
         if (url == null) {
-            _state.update { it.copy(fieldErrors = mapOf(Field.Server to R.string.error_invalid_url)) }
+            _state.update { it.copy(editServer = true, fieldErrors = mapOf(Field.Server to R.string.error_invalid_url)) }
             return
         }
         run {
             val info = account.checkServer(url)
             when {
-                info.name != "tasky" -> _state.update { it.copy(errorRes = R.string.error_not_tasky) }
-                info.api_version != 1 -> _state.update { it.copy(error = UnsupportedApi(info.api_version)) }
+                info.name != "tasky" -> _state.update { it.copy(editServer = true, errorRes = R.string.error_not_tasky) }
+                info.api_version != 1 -> _state.update { it.copy(editServer = true, error = UnsupportedApi(info.api_version)) }
                 else -> _state.update { it.copy(serverUrl = url, serverInfo = info, step = then) }
             }
         }
@@ -123,7 +131,7 @@ class OnboardingViewModel(
                 _state.update { it.copy(busy = false) }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                _state.update { it.copy(busy = false, error = e) }
+                _state.update { it.copy(busy = false, error = e, editServer = it.editServer || it.step == OnboardingStep.Server) }
             }
         }
     }
