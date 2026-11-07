@@ -1,3 +1,65 @@
 <resources>
     <string name="app_name">Tasky</string>
+
+    <!-- Common -->
+    <string name="action_continue">Continue</string>
+    <string name="action_back">Back</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_save">Save</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_add">Add</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_done">Done</string>
+    <string name="action_close">Close</string>
+    <string name="action_rename">Rename</string>
+    <string name="field_name">Name</string>
+    <string name="field_note">Note</string>
+    <string name="field_amount">Amount</string>
+    <string name="field_unit">Unit</string>
+    <string name="field_category">Category</string>
+    <string name="field_default_unit">Default unit</string>
+    <string name="field_item">Item</string>
+    <string name="field_servings">Servings</string>
+    <string name="optional_hint">optional</string>
+
+    <!-- Errors -->
+    <string name="error_network">Can\'t reach the server: %1$s</string>
+    <string name="error_cleartext">Android blocks plain http:// connections. Use an https:// address.</string>
+    <string name="error_invalid_credentials">Wrong username or password.</string>
+    <string name="error_invalid_setup_token">That household creation token isn\'t valid. The server logs the current one at startup and after each use.</string>
+    <string name="error_invalid_invite">This invite code is unknown, already used or expired.</string>
+    <string name="error_username_taken">That username is already taken.</string>
+    <string name="error_server">The server said: %1$s</string>
+    <string name="error_not_tasky">This doesn\'t look like a Tasky server.</string>
+    <string name="error_api_version">This server speaks API version %1$d, but the app needs version 1.</string>
+    <string name="error_invalid_url">Enter a server address like tasky.example.com.</string>
+    <string name="error_username_rules">3–32 characters: letters, digits, dot, dash or underscore.</string>
+    <string name="error_password_rules">At least 8 characters.</string>
+    <string name="error_display_name_rules">1–64 characters.</string>
+    <string name="error_required">Required.</string>
+    <string name="error_rejected">The server refused a change: %1$s</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_welcome">Meal plans and shared shopping lists for your household.</string>
+    <string name="onboarding_server_title">Your Tasky server</string>
+    <string name="onboarding_server_url">Server address</string>
+    <string name="onboarding_server_hint">tasky.example.com</string>
+    <string name="onboarding_connected">Connected to %1$s %2$s</string>
+    <string name="onboarding_create">Create a household</string>
+    <string name="onboarding_create_desc">You run the server and need the creation token from its log.</string>
+    <string name="onboarding_join">Join with an invite code</string>
+    <string name="onboarding_join_desc">Someone in your household invited you.</string>
+    <string name="onboarding_login">Sign in</string>
+    <string name="onboarding_login_desc">You already have an account.</string>
+    <string name="onboarding_setup_token">Household creation token</string>
+    <string name="onboarding_setup_token_help">Printed in the server log: “household creation token: tsk_…”.</string>
+    <string name="onboarding_household_name">Household name</string>
+    <string name="onboarding_invite_code">Invite code</string>
+    <string name="onboarding_display_name">Your name</string>
+    <string name="onboarding_display_name_help">Shown to others in your household.</string>
+    <string name="onboarding_username">Username</string>
+    <string name="onboarding_password">Password</string>
+    <string name="onboarding_show_password">Show password</string>
+    <string name="onboarding_hide_password">Hide password</string>
+    <string name="onboarding_change_server">Change server</string>
 </resources>
