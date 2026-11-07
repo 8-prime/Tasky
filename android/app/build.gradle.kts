@@ -48,6 +48,7 @@ android {
 
     testOptions {
         unitTests.isIncludeAndroidResources = true
+        unitTests.isReturnDefaultValues = true
         unitTests.all {
             // Opt-in end-to-end test against a real server (see android/README.md).
             it.systemProperty("tasky.server", System.getenv("TASKY_TEST_SERVER") ?: "")
