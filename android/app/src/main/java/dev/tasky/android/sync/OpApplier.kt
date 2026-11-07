@@ -4,6 +4,7 @@ import dev.tasky.api.ContributionField
 import dev.tasky.api.EntityData
 import dev.tasky.api.EntityKind
 import dev.tasky.api.ItemField
+import dev.tasky.api.ListEntryField
 import dev.tasky.api.ListField
 import dev.tasky.api.MealField
 import dev.tasky.api.MealIngredientField
@@ -19,6 +20,7 @@ val EntityData.kind: EntityKind
         is EntityData.Meal -> EntityKind.Meal
         is EntityData.MealIngredient -> EntityKind.MealIngredient
         is EntityData.PlanEntry -> EntityKind.PlanEntry
+        is EntityData.ListEntry -> EntityKind.ListEntry
     }
 
 val OpAction.kind: EntityKind
@@ -31,6 +33,7 @@ val OpAction.kind: EntityKind
         is OpAction.SetMeal -> EntityKind.Meal
         is OpAction.SetMealIngredient -> EntityKind.MealIngredient
         is OpAction.SetPlanEntry -> EntityKind.PlanEntry
+        is OpAction.SetListEntry -> EntityKind.ListEntry
     }
 
 /** Same rule as the server: lowercase, trimmed, single-spaced. */
@@ -60,6 +63,9 @@ object OpApplier {
                 is EntityData.Contribution -> EntityData.Contribution(
                     data.value.copy(purchased_by = if (data.value.purchased) me else null),
                 )
+                is EntityData.ListEntry -> EntityData.ListEntry(
+                    data.value.copy(checked_by = if (data.value.checked) me else null),
+                )
                 else -> data
             }
             is OpAction.Delete -> null
@@ -81,6 +87,14 @@ object OpApplier {
         cur is EntityData.List && action is OpAction.SetList -> EntityData.List(
             when (val f = action.value) {
                 is ListField.Name -> cur.value.copy(name = f.value)
+                is ListField.Body -> cur.value.copy(body = f.value)
+            },
+        )
+        cur is EntityData.ListEntry && action is OpAction.SetListEntry -> EntityData.ListEntry(
+            when (val f = action.value) {
+                is ListEntryField.ListId -> cur.value.copy(list_id = f.value)
+                is ListEntryField.Text -> cur.value.copy(text = f.value)
+                is ListEntryField.Checked -> cur.value.copy(checked = f.value, checked_by = if (f.value) me else null)
             },
         )
         cur is EntityData.Contribution && action is OpAction.SetContribution -> EntityData.Contribution(

@@ -90,6 +90,21 @@
     <string name="list_in_category">In %1$s</string>
     <string name="list_added">Added %1$s</string>
     <string name="list_remove_line">Remove from list</string>
+    <string name="list_kind_title">Type</string>
+    <string name="list_kind_grocery">Grocery list</string>
+    <string name="list_kind_grocery_help">Items with amounts. Meals from the planner add up here.</string>
+    <string name="list_kind_checklist">Checklist</string>
+    <string name="list_kind_checklist_help">Simple to-dos you tick off.</string>
+    <string name="list_kind_note">Note</string>
+    <string name="list_kind_note_help">Free text, shared with everyone.</string>
+    <string name="checklist_add_hint">Add an entry</string>
+    <string name="checklist_add">Add entry</string>
+    <string name="checklist_empty">Nothing here yet. Type above to add the first entry.</string>
+    <string name="checklist_edit_entry">Edit entry</string>
+    <string name="checklist_delete_entry">Delete</string>
+    <string name="field_entry">Entry</string>
+    <string name="note_placeholder">Write something…</string>
+    <string name="note_text">Note text</string>
     <string name="list_edit_item">Edit item</string>
     <!-- Meals -->
     <string name="meals_title">Meals</string>

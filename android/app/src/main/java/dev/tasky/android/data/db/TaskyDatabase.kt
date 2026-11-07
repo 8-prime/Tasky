@@ -1,6 +1,7 @@
 package dev.tasky.android.data.db
 
 import android.content.Context
+import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -9,9 +10,12 @@ import androidx.room.RoomDatabase
     entities = [
         ItemRow::class, ListRow::class, ContributionRow::class, MealRow::class, MealIngredientRow::class,
         PlanEntryRow::class, ServerEntityRow::class, OutboxRow::class, MemberRow::class, SyncStateRow::class,
+        ListEntryRow::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
+    // 1 → 2: list kinds (lists.kind, lists.body) and checklist entries. Keeps the outbox.
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
 )
 abstract class TaskyDatabase : RoomDatabase() {
     abstract fun entities(): EntityDao

@@ -93,7 +93,8 @@ class PlanViewModel(private val repo: TaskyRepository, private val sessions: Ses
             },
             meals = c.meals,
             members = c.members,
-            lists = c.lists.sortedWith(compareBy({ !it.name.equals(DEFAULT_LIST_NAME, true) }, { it.name.lowercase() })),
+            // Only grocery lists can take meal ingredients.
+            lists = c.lists.filter { it.isGrocery }.sortedWith(compareBy({ !it.name.equals(DEFAULT_LIST_NAME, true) }, { it.name.lowercase() })),
             myUserId = sessions.current?.userId,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlanState(_week.value))

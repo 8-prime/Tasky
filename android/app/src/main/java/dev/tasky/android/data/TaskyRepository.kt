@@ -16,7 +16,10 @@ import dev.tasky.api.EntityKind
 import dev.tasky.api.ItemData
 import dev.tasky.api.ItemField
 import dev.tasky.api.ListData
+import dev.tasky.api.ListEntryData
+import dev.tasky.api.ListEntryField
 import dev.tasky.api.ListField
+import dev.tasky.api.ListKind
 import dev.tasky.api.MealData
 import dev.tasky.api.MealField
 import dev.tasky.api.MealIngredientData
@@ -83,21 +86,51 @@ class TaskyRepository(
 
     // ---------- lists ----------
 
-    suspend fun createList(name: String): String {
+    suspend fun createList(name: String, kind: ListKind = ListKind.Grocery): String {
         val id = Uuids.v7()
-        commit(listOf(op(id, OpAction.Create(EntityData.List(ListData(name.trim()))))))
+        commit(listOf(op(id, OpAction.Create(EntityData.List(ListData(name = name.trim(), kind = kind, body = null))))))
         return id
     }
 
     suspend fun renameList(id: String, name: String) =
         commit(listOf(op(id, OpAction.SetList(ListField.Name(name.trim())))))
 
-    /** Deletes a list together with all of its contributions. */
+    /** Deletes a list together with its contributions and checklist entries. */
     suspend fun deleteList(id: String) {
         val ops = queries.allContributionsOfList(id).map { op(it.id, OpAction.Delete(EntityKind.Contribution)) } +
+            queries.listEntriesNow(id).map { op(it.id, OpAction.Delete(EntityKind.ListEntry)) } +
             op(id, OpAction.Delete(EntityKind.List))
         commit(ops)
     }
+
+    // ---------- notes ----------
+
+    /** Saves a note's text (no-op if unchanged). Blank text is stored as null. */
+    suspend fun setNoteBody(listId: String, body: String) {
+        val cur = store.db.entities().list(listId) ?: return
+        val value = body.ifBlank { null }
+        if (value != cur.body) commit(listOf(op(listId, OpAction.SetList(ListField.Body(value)))))
+    }
+
+    // ---------- checklists ----------
+
+    suspend fun addEntry(listId: String, text: String) {
+        val data = ListEntryData(list_id = listId, text = text.trim(), checked = false)
+        commit(listOf(op(Uuids.v7(), OpAction.Create(EntityData.ListEntry(data)))))
+    }
+
+    suspend fun setEntryChecked(id: String, checked: Boolean) =
+        commit(listOf(op(id, OpAction.SetListEntry(ListEntryField.Checked(checked)))))
+
+    suspend fun setEntryText(id: String, text: String) =
+        commit(listOf(op(id, OpAction.SetListEntry(ListEntryField.Text(text.trim())))))
+
+    suspend fun deleteEntry(id: String) = commit(listOf(op(id, OpAction.Delete(EntityKind.ListEntry))))
+
+    /** "Clear checked" for a checklist: deletes its checked entries. */
+    suspend fun clearCheckedEntries(listId: String) = commit(
+        queries.listEntriesNow(listId).filter { it.checked }.map { op(it.id, OpAction.Delete(EntityKind.ListEntry)) },
+    )
 
     /** Adds an item by name to a list (creating the item if needed). Returns the item id. */
     suspend fun addToList(

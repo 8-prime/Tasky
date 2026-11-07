@@ -76,4 +76,24 @@ class OpApplierTest {
         assertEquals("cherry tomatoes", normalizeName("  Cherry \t  Tomatoes "))
         assertEquals("milk", normalizeName("MILK"))
     }
+
+    @org.junit.Test
+    fun checklistEntriesAndNoteBodies() {
+        val entry = dev.tasky.api.EntityData.ListEntry(
+            dev.tasky.api.ListEntryData(list_id = "l", text = "Call plumber", checked = true, checked_by = "someone-else"),
+        )
+        // Creating attributes a pre-checked entry to me, like the server does.
+        val created = OpApplier.apply(null, dev.tasky.api.OpAction.Create(entry), "me") as dev.tasky.api.EntityData.ListEntry
+        org.junit.Assert.assertEquals("me", created.value.checked_by)
+        val unchecked = OpApplier.apply(
+            created, dev.tasky.api.OpAction.SetListEntry(dev.tasky.api.ListEntryField.Checked(false)), "me",
+        ) as dev.tasky.api.EntityData.ListEntry
+        org.junit.Assert.assertEquals(false to null, unchecked.value.checked to unchecked.value.checked_by)
+
+        val note = dev.tasky.api.EntityData.List(dev.tasky.api.ListData("Ideas", dev.tasky.api.ListKind.Note, null))
+        val edited = OpApplier.apply(note, dev.tasky.api.OpAction.SetList(dev.tasky.api.ListField.Body("hi")), "me")
+            as dev.tasky.api.EntityData.List
+        org.junit.Assert.assertEquals("hi", edited.value.body)
+        org.junit.Assert.assertEquals(dev.tasky.api.ListKind.Note, edited.value.kind)
+    }
 }

@@ -53,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.tasky.android.R
 import dev.tasky.android.data.db.ItemRow
+import dev.tasky.android.data.db.ListEntryRow
 import dev.tasky.android.domain.ListLine
 import dev.tasky.android.domain.Units
 import dev.tasky.android.sync.normalizeName
@@ -69,6 +70,7 @@ private sealed interface ListDialog {
     data object Delete : ListDialog
     data class Line(val line: ListLine) : ListDialog
     data class EditItem(val item: ItemRow) : ListDialog
+    data class Entry(val entry: ListEntryRow) : ListDialog
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -91,7 +93,11 @@ fun ShoppingListScreen(vm: ShoppingListViewModel) {
                         }
                         DropdownMenu(expanded = listMenu, onDismissRequest = { listMenu = false }) {
                             s.lists.forEach { l ->
-                                DropdownMenuItem(text = { Text(l.name) }, onClick = { vm.select(l.id); listMenu = false })
+                                DropdownMenuItem(
+                                    text = { Text(l.name) },
+                                    leadingIcon = { Icon(l.icon(), null) },
+                                    onClick = { vm.select(l.id); listMenu = false },
+                                )
                             }
                             HorizontalDivider()
                             DropdownMenuItem(
@@ -105,11 +111,13 @@ fun ShoppingListScreen(vm: ShoppingListViewModel) {
                 actions = {
                     IconButton(onClick = { overflow = true }) { Icon(Icons.Filled.MoreVert, stringResource(R.string.more_options)) }
                     DropdownMenu(expanded = overflow, onDismissRequest = { overflow = false }) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.list_clear_checked)) },
-                            enabled = s.checked.isNotEmpty(),
-                            onClick = { vm.clearChecked(); overflow = false },
-                        )
+                        if (s.list?.isNote != true) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.list_clear_checked)) },
+                                enabled = s.hasChecked,
+                                onClick = { vm.clearChecked(); overflow = false },
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.list_rename)) },
                             enabled = s.list != null,
@@ -117,7 +125,9 @@ fun ShoppingListScreen(vm: ShoppingListViewModel) {
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.list_delete)) },
-                            enabled = s.list != null && s.lists.size > 1,
+                            // Keep at least one grocery list: the planner adds meals to it.
+                            enabled = s.list != null && s.lists.size > 1 &&
+                                !(s.list?.isGrocery == true && s.lists.count { it.isGrocery } == 1),
                             onClick = { dialog = ListDialog.Delete; overflow = false },
                         )
                     }
@@ -125,7 +135,7 @@ fun ShoppingListScreen(vm: ShoppingListViewModel) {
             )
         },
         floatingActionButton = {
-            if (s.list != null) {
+            if (s.list?.isGrocery == true) {
                 ExtendedFloatingActionButton(
                     onClick = { adding = true },
                     icon = { Icon(Icons.Filled.Add, null) },
@@ -134,7 +144,19 @@ fun ShoppingListScreen(vm: ShoppingListViewModel) {
             }
         },
     ) { padding ->
-        if (!s.loading && s.groups.isEmpty() && s.checked.isEmpty()) {
+        val current = s.list
+        if (current?.isNote == true) {
+            NoteContent(current, padding) { vm.saveNote(current.id, it) }
+        } else if (current?.isChecklist == true) {
+            ChecklistContent(
+                entries = s.entries,
+                members = s.memberNames,
+                padding = padding,
+                onAdd = vm::addEntry,
+                onToggle = vm::toggleEntry,
+                onLongPress = { dialog = ListDialog.Entry(it) },
+            )
+        } else if (!s.loading && s.groups.isEmpty() && s.checked.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding).padding(32.dp), contentAlignment = Alignment.Center) {
                 Text(
                     stringResource(if (s.list == null) R.string.list_none_yet else R.string.list_empty),
@@ -175,10 +197,16 @@ fun ShoppingListScreen(vm: ShoppingListViewModel) {
 
     when (val d = dialog) {
         null -> Unit
-        ListDialog.NewList -> TextInputDialog(
-            title = stringResource(R.string.list_new), label = R.string.field_name, confirm = R.string.action_add,
+        ListDialog.NewList -> NewListDialog(onDismiss = { dialog = null }) { name, kind ->
+            vm.createList(name, kind)
+            dialog = null
+        }
+        is ListDialog.Entry -> EntryActionsDialog(
+            entry = d.entry,
             onDismiss = { dialog = null },
-        ) { vm.createList(it); dialog = null }
+            onSave = { vm.editEntry(d.entry, it); dialog = null },
+            onDelete = { vm.deleteEntry(d.entry); dialog = null },
+        )
         ListDialog.Rename -> TextInputDialog(
             title = stringResource(R.string.list_rename), label = R.string.field_name, initial = s.list?.name.orEmpty(),
             onDismiss = { dialog = null },

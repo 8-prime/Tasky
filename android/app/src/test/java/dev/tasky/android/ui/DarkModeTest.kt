@@ -51,6 +51,8 @@ class DarkModeTest {
 
     private lateinit var db: TaskyDatabase
     private lateinit var repo: TaskyRepository
+    private lateinit var checklistId: String
+    private lateinit var noteId: String
     private val outDir = File(System.getProperty("tasky.screenshots") ?: "build/screenshots/dark")
 
     @Before
@@ -61,6 +63,14 @@ class DarkModeTest {
         runBlocking {
             val list = repo.createList("Groceries")
             repo.addToList(list, "Milk", 1.0, "l")
+            checklistId = repo.createList("Weekend", dev.tasky.api.ListKind.Checklist)
+            repo.addEntry(checklistId, "Call plumber")
+            repo.addEntry(checklistId, "Water plants")
+            repo.addEntry(checklistId, "Return library books")
+            val done = repo.queries.listEntriesNow(checklistId).last()
+            repo.setEntryChecked(done.id, true)
+            noteId = repo.createList("Ideas", dev.tasky.api.ListKind.Note)
+            repo.setNoteBody(noteId, "Paint the hallway\nFix the bike\nBirthday gift for Ben")
             val meal = repo.createMeal("Curry", 4, "Spicy", null)
             repo.addIngredient(meal, "Rice", 400.0, "g", null)
             repo.createPlanEntry(
@@ -119,5 +129,21 @@ class DarkModeTest {
         val vm = PlanViewModel(repo, SessionStore(ApplicationProvider.getApplicationContext(), PlainBox))
         compose.setContent { TaskyTheme { PlanScreen(vm) } }
         shoot("plan", "Curry")
+    }
+
+    @Test
+    fun checklist() {
+        val vm = ShoppingListViewModel(repo)
+        vm.select(checklistId)
+        compose.setContent { TaskyTheme { ShoppingListScreen(vm) } }
+        shoot("checklist", "Return library books")
+    }
+
+    @Test
+    fun note() {
+        val vm = ShoppingListViewModel(repo)
+        vm.select(noteId)
+        compose.setContent { TaskyTheme { ShoppingListScreen(vm) } }
+        shoot("note", "Fix the bike")
     }
 }

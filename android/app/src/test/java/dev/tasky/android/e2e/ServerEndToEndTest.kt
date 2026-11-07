@@ -282,6 +282,51 @@ class ServerEndToEndTest {
         assertTrue(b.engine.sync())
         assertNotEquals(0L, b.engine.cursor())
     }
+
+    @Test
+    fun checklistsAndNotesSyncBetweenDevices() = runBlocking {
+        val (a, b) = household()
+        syncAll(a, b)
+        assertEquals(dev.tasky.android.data.db.LIST_GROCERY, a.groceries().kind)
+
+        val checklist = a.repo.createList("Weekend", dev.tasky.api.ListKind.Checklist)
+        a.repo.addEntry(checklist, "Call plumber")
+        a.repo.addEntry(checklist, "Water plants")
+        val note = a.repo.createList("Ideas", dev.tasky.api.ListKind.Note)
+        a.repo.setNoteBody(note, "Paint the hallway")
+        syncAll(a, b)
+
+        val listsB = b.q.lists().first().associateBy { it.id }
+        assertTrue(listsB.getValue(checklist).isChecklist)
+        assertEquals("Paint the hallway", listsB.getValue(note).body)
+        val entriesB = b.q.listEntriesNow(checklist)
+        assertEquals(listOf("Call plumber", "Water plants"), entriesB.map { it.text })
+        // Checklist entries stay out of the grocery catalog.
+        assertTrue(b.q.items().first().isEmpty())
+
+        // B checks an entry while A renames it: both edits survive, and A sees who checked.
+        b.repo.setEntryChecked(entriesB[0].id, true)
+        a.repo.setEntryText(entriesB[0].id, "Call the plumber")
+        b.repo.setNoteBody(note, "Paint the hallway\nFix the bike")
+        syncAll(a, b)
+        for (d in listOf(a, b)) {
+            val e = d.q.listEntriesNow(checklist).first()
+            assertEquals("Call the plumber", e.text)
+            assertTrue(e.checked)
+            assertEquals(b.session.userId, e.checkedBy)
+            assertEquals("Paint the hallway\nFix the bike", d.q.lists().first().single { it.id == note }.body)
+            assertEquals(0, d.db.outbox().count())
+        }
+
+        // Clear checked deletes the checked entry everywhere; deleting a list removes its entries.
+        a.repo.clearCheckedEntries(checklist)
+        syncAll(a, b)
+        assertEquals(listOf("Water plants"), b.q.listEntriesNow(checklist).map { it.text })
+        b.repo.deleteList(checklist)
+        syncAll(a, b)
+        assertTrue(a.q.listEntriesNow(checklist).isEmpty())
+        assertNull(a.q.lists().first().firstOrNull { it.id == checklist })
+    }
 }
 
 private fun CoroutineScope.launchCollect(engine: SyncEngine, onEach: (dev.tasky.api.RejectedOp) -> Unit) =

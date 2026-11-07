@@ -55,6 +55,8 @@ Debug builds allow plain `http://` so you can use a local server, e.g. from the 
 
 ## Tests
 
+- `data/MigrationTest`: Room upgrades keep local data and the outbox (schemas in `app/schemas/`, exported by Room).
+
 - `api/WireFormatTest`: the JSON shapes from `server/crates/tasky-api/tests/wire_format.rs`.
 - `sync/*`: HLC, UUIDv5/v7 (incl. the contribution-ID test vector), op application, and
   `SyncEngineTest` (Robolectric + in-memory Room) for outbox replay, `has_more`, `full_resync`,

@@ -1,5 +1,6 @@
 package dev.tasky.android.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -20,6 +21,28 @@ data class ItemRow(
 data class ListRow(
     @PrimaryKey val id: String,
     val name: String,
+    /** `grocery` / `checklist` / `note` (lists from before list kinds are `grocery`). */
+    @ColumnInfo(defaultValue = "grocery") val kind: String = LIST_GROCERY,
+    /** Text of a note. */
+    val body: String? = null,
+) {
+    val isGrocery get() = kind == LIST_GROCERY
+    val isChecklist get() = kind == LIST_CHECKLIST
+    val isNote get() = kind == LIST_NOTE
+}
+
+const val LIST_GROCERY = "grocery"
+const val LIST_CHECKLIST = "checklist"
+const val LIST_NOTE = "note"
+
+/** One line of a checklist. IDs are UUIDv7, so ordering by id is creation order. */
+@Entity(tableName = "list_entries", indices = [Index("listId")])
+data class ListEntryRow(
+    @PrimaryKey val id: String,
+    val listId: String,
+    val text: String,
+    val checked: Boolean,
+    val checkedBy: String?,
 )
 
 @Entity(tableName = "contributions", indices = [Index("listId", "itemId"), Index("itemId"), Index("planEntryId")])
