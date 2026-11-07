@@ -69,6 +69,8 @@ class SyncEngine(
                     throw e
                 }
                 hlc.observeServerTime(response.server_time_ms)
+                // Signed out (or switched accounts) while the request was running: drop the answer.
+                if (target()?.householdId != t.householdId) return@withLock false
                 val applied = store.applySyncResponse(batch, response)
                 for ((_, r) in applied.rejected) {
                     Log.w(TAG, "op rejected: ${r.code} ${r.entity_id}: ${r.message}")

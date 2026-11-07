@@ -32,7 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -79,11 +79,10 @@ fun OnboardingScreen(vm: OnboardingViewModel) {
 
 @Composable
 private fun ErrorText(s: OnboardingState) {
-    val context = LocalContext.current
     val text = when {
         s.errorRes != null -> stringResource(s.errorRes)
         s.error is OnboardingViewModel.UnsupportedApi -> stringResource(R.string.error_api_version, s.error.version)
-        s.error != null -> context.errorMessage(s.error)
+        s.error != null -> LocalResources.current.errorMessage(s.error)
         else -> null
     }
     if (text != null) Text(text, color = MaterialTheme.colorScheme.error)

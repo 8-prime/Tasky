@@ -14,7 +14,9 @@ import dev.tasky.api.SyncRequest
 import dev.tasky.api.SyncResponse
 import dev.tasky.api.UpdateHouseholdRequest
 import dev.tasky.api.UpdateMeRequest
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.serializer
 import okhttp3.Call
@@ -79,7 +81,11 @@ class ApiClient(
     private suspend inline fun <reified B, reified R> send(method: String, path: String, body: B): R =
         send(method, path, TaskyJson.encodeToString(serializer<B>(), body), serializer<R>())
 
-    private suspend fun <R> send(method: String, path: String, json: String?, out: KSerializer<R>?): R {
+    /** Runs on the IO dispatcher: the response body is read (blocking) here. */
+    private suspend fun <R> send(method: String, path: String, json: String?, out: KSerializer<R>?): R =
+        withContext(Dispatchers.IO) { execute(method, path, json, out) }
+
+    private suspend fun <R> execute(method: String, path: String, json: String?, out: KSerializer<R>?): R {
         val builder = Request.Builder().url(api + path)
         token?.let { builder.header("Authorization", "Bearer $it") }
         builder.method(method, json?.toRequestBody(JSON))

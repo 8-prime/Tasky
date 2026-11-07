@@ -12,6 +12,8 @@ import dev.tasky.api.LoginRequest
 import dev.tasky.api.ServerInfo
 import dev.tasky.api.UpdateHouseholdRequest
 import dev.tasky.api.UpdateMeRequest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.io.IOException
 
@@ -60,7 +62,7 @@ class AccountRepository(
         val auth = call(client)
         val household = auth.households.firstOrNull() ?: throw IOException("This account has no household")
         // A different account may have used this device before: start from a clean store.
-        db.clearAllTables()
+        withContext(Dispatchers.IO) { db.clearAllTables() }
         sessions.save(
             Session(
                 serverUrl = client.serverUrl,

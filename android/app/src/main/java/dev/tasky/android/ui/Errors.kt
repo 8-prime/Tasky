@@ -1,13 +1,13 @@
 package dev.tasky.android.ui
 
-import android.content.Context
+import android.content.res.Resources
 import dev.tasky.android.R
 import dev.tasky.android.api.ApiException
 import dev.tasky.api.ErrorCode
 import java.net.UnknownServiceException
 
 /** A user-facing message for anything thrown by the API client. */
-fun Context.errorMessage(e: Throwable): String = when (e) {
+fun Resources.errorMessage(e: Throwable): String = when (e) {
     is ApiException -> when (e.code) {
         ErrorCode.InvalidCredentials -> getString(R.string.error_invalid_credentials)
         ErrorCode.InvalidSetupToken -> getString(R.string.error_invalid_setup_token)

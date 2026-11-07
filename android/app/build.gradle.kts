@@ -15,7 +15,7 @@ android {
     defaultConfig {
         applicationId = "dev.tasky.android"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
     }
@@ -62,6 +62,8 @@ android {
         disable += "GradleDependency"
         disable += "AndroidGradlePluginVersion"
         disable += "NewerVersionAvailable"
+        // mipmap-anydpi-v26 is still needed: aapt2 does not resolve adaptive icons from mipmap-anydpi.
+        disable += "ObsoleteSdkInt"
     }
 }
 

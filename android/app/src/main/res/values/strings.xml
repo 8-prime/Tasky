@@ -11,26 +11,23 @@
     <string name="action_edit">Edit</string>
     <string name="action_done">Done</string>
     <string name="action_close">Close</string>
-    <string name="action_rename">Rename</string>
     <string name="field_name">Name</string>
     <string name="field_note">Note</string>
     <string name="field_amount">Amount</string>
     <string name="field_unit">Unit</string>
     <string name="field_category">Category</string>
-    <string name="field_default_unit">Default unit</string>
     <string name="field_item">Item</string>
     <string name="field_servings">Servings</string>
-    <string name="optional_hint">optional</string>
 
     <!-- Errors -->
-    <string name="error_network">Can\'t reach the server: %1$s</string>
+    <string name="error_network">Can’t reach the server: %1$s</string>
     <string name="error_cleartext">Android blocks plain http:// connections. Use an https:// address.</string>
     <string name="error_invalid_credentials">Wrong username or password.</string>
-    <string name="error_invalid_setup_token">That household creation token isn\'t valid. The server logs the current one at startup and after each use.</string>
+    <string name="error_invalid_setup_token">That household creation token isn’t valid. The server logs the current one at startup and after each use.</string>
     <string name="error_invalid_invite">This invite code is unknown, already used or expired.</string>
     <string name="error_username_taken">That username is already taken.</string>
     <string name="error_server">The server said: %1$s</string>
-    <string name="error_not_tasky">This doesn\'t look like a Tasky server.</string>
+    <string name="error_not_tasky">This doesn’t look like a Tasky server.</string>
     <string name="error_api_version">This server speaks API version %1$d, but the app needs version 1.</string>
     <string name="error_invalid_url">Enter a server address like tasky.example.com.</string>
     <string name="error_username_rules">3–32 characters: letters, digits, dot, dash or underscore.</string>
@@ -62,4 +59,130 @@
     <string name="onboarding_show_password">Show password</string>
     <string name="onboarding_hide_password">Hide password</string>
     <string name="onboarding_change_server">Change server</string>
+    <!-- Navigation -->
+    <string name="nav_list">List</string>
+    <string name="nav_plan">Plan</string>
+    <string name="nav_meals">Meals</string>
+    <string name="nav_household">Household</string>
+    <string name="more_options">More options</string>
+    <string name="someone">Someone</string>
+
+    <!-- Shopping list -->
+    <string name="list_title">Shopping list</string>
+    <string name="list_switch">Switch list</string>
+    <string name="list_new">New list</string>
+    <string name="list_rename">Rename list</string>
+    <string name="list_delete">Delete list</string>
+    <string name="list_delete_title">Delete “%1$s”?</string>
+    <string name="list_delete_text">The list and everything on it are removed for everyone in the household.</string>
+    <string name="list_clear_checked">Clear checked</string>
+    <string name="list_add_item">Add item</string>
+    <string name="list_none_yet">Your lists will appear here after the first sync.</string>
+    <string name="list_empty">Nothing to buy. Add items with the button below, or add meals from the planner.</string>
+    <string name="list_uncategorized">Other</string>
+    <plurals name="list_checked_count">
+        <item quantity="one">Checked (%1$d)</item>
+        <item quantity="other">Checked (%1$d)</item>
+    </plurals>
+    <string name="list_checked_by">✓ %1$s</string>
+    <string name="list_category_help">New item. A category like “Produce” groups it on the list.</string>
+    <string name="list_in_category">In %1$s</string>
+    <string name="list_added">Added %1$s</string>
+    <string name="list_remove_line">Remove from list</string>
+    <string name="list_edit_item">Edit item</string>
+    <!-- Meals -->
+    <string name="meals_title">Meals</string>
+    <string name="meals_new">New meal</string>
+    <string name="meals_edit">Edit meal</string>
+    <string name="meals_create">Create meal</string>
+    <string name="meals_delete">Delete meal</string>
+    <string name="meals_delete_title">Delete “%1$s”?</string>
+    <string name="meals_delete_text">Its ingredients are deleted too. Planned entries keep the meal’s name.</string>
+    <string name="meals_empty">No meals yet. Add the dishes you cook often, with their ingredients, to plan them and fill the list in one go.</string>
+    <string name="meals_default_servings">Servings</string>
+    <string name="meals_default_servings_help">The ingredient amounts below are for this many servings.</string>
+    <string name="meals_url">Recipe link</string>
+    <string name="meals_notes">Notes</string>
+    <string name="meals_ingredients">Ingredients</string>
+    <string name="meals_add_ingredient">Add ingredient</string>
+    <string name="meals_edit_ingredient">Edit ingredient</string>
+    <string name="meals_no_ingredients">No ingredients yet.</string>
+    <string name="meals_amount_help">Amounts are scaled to the planned servings when added to the list.</string>
+    <plurals name="meals_summary_servings">
+        <item quantity="one">%1$d serving</item>
+        <item quantity="other">%1$d servings</item>
+    </plurals>
+    <plurals name="meals_summary_ingredients">
+        <item quantity="one">%1$d ingredient</item>
+        <item quantity="other">%1$d ingredients</item>
+    </plurals>
+    <!-- Planner -->
+    <string name="slot_breakfast">Breakfast</string>
+    <string name="slot_lunch">Lunch</string>
+    <string name="slot_dinner">Dinner</string>
+    <string name="plan_week_of">Week of %1$s</string>
+    <string name="plan_previous_week">Previous week</string>
+    <string name="plan_next_week">Next week</string>
+    <string name="plan_this_week">This week</string>
+    <string name="plan_add_to_slot">Add %1$s</string>
+    <string name="plan_household">Household</string>
+    <string name="plan_on_list">on list</string>
+    <string name="plan_new_entry">Plan a meal</string>
+    <string name="plan_edit_entry">Edit planned meal</string>
+    <string name="plan_meal">Meal</string>
+    <string name="plan_other_meal">Other (type a name)</string>
+    <string name="plan_free_text">What’s cooking</string>
+    <string name="plan_for">For</string>
+    <string name="plan_day">Day</string>
+    <string name="plan_slot">Meal of the day</string>
+    <string name="plan_list">List</string>
+    <string name="plan_servings_help">Leave empty for the default (%1$d).</string>
+    <string name="plan_add_to_list">Add to list</string>
+    <string name="plan_add_week_to_list">Add week to list</string>
+    <string name="plan_no_ingredients">This meal has no ingredients in the catalog.</string>
+    <string name="plan_delete_title">Delete “%1$s”?</string>
+    <string name="plan_delete_text">Ingredients from it that haven’t been bought yet are removed from the list.</string>
+    <string name="plan_nothing_to_add">None of these meals have ingredients. Add them in the Meals tab.</string>
+    <string name="plan_untick_help">Untick what you already have at home.</string>
+    <string name="plan_already_added">already added</string>
+    <plurals name="plan_add_n">
+        <item quantity="one">Add %1$d item</item>
+        <item quantity="other">Add %1$d items</item>
+    </plurals>
+    <!-- Household -->
+    <string name="household_name">Household name</string>
+    <string name="household_rename">Rename household</string>
+    <plurals name="household_members">
+        <item quantity="one">%1$d member</item>
+        <item quantity="other">%1$d members</item>
+    </plurals>
+    <string name="household_you">%1$s (you)</string>
+    <string name="household_owner">\@%1$s · created the household</string>
+    <string name="household_change_display_name">Change your name</string>
+    <string name="household_invite">Invite someone</string>
+    <string name="household_invite_title">Invite to your household</string>
+    <string name="household_invite_qr">QR code with the invite</string>
+    <string name="household_invite_help">Scan the code with the other phone’s camera, or enter the server %1$s and this code in Tasky.</string>
+    <string name="household_invite_expires">Works once, until %1$s.</string>
+    <string name="household_invite_share">Share</string>
+    <string name="household_invite_share_text">Join our household on Tasky.\nServer: %1$s\nInvite code: %2$s\n%3$s</string>
+    <string name="household_sync">Sync</string>
+    <string name="household_signed_in_as">Signed in as \@%1$s</string>
+    <string name="household_last_sync">Last synced: %1$s</string>
+    <string name="household_never">never</string>
+    <string name="household_live_on">Live updates: connected</string>
+    <string name="household_live_off">Live updates: not connected</string>
+    <plurals name="household_pending">
+        <item quantity="one">%1$d change waiting to be sent</item>
+        <item quantity="other">%1$d changes waiting to be sent</item>
+    </plurals>
+    <string name="household_sync_error">Last sync failed: %1$s</string>
+    <string name="household_sync_now">Sync now</string>
+    <string name="household_logout">Sign out</string>
+    <string name="household_logout_title">Sign out?</string>
+    <string name="household_logout_text">This device forgets the household data. Sign in again any time to get it back.</string>
+    <plurals name="household_logout_pending">
+        <item quantity="one">%1$d change hasn’t reached the server yet and will be lost.</item>
+        <item quantity="other">%1$d changes haven’t reached the server yet and will be lost.</item>
+    </plurals>
 </resources>

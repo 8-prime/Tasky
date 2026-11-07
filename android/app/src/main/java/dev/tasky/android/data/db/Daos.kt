@@ -107,6 +107,8 @@ interface QueryDao {
     @Query("SELECT * FROM plan_entries WHERE date >= :from AND date <= :to ORDER BY date")
     fun planEntries(from: String, to: String): Flow<List<PlanEntryRow>>
 
+    @Query("SELECT * FROM plan_entries WHERE mealId = :mealId") suspend fun planEntriesForMeal(mealId: String): List<PlanEntryRow>
+
     @Query("SELECT * FROM members ORDER BY joinedAtMs") fun members(): Flow<List<MemberRow>>
     @Query("SELECT COUNT(*) FROM members") suspend fun memberCount(): Int
     @Upsert suspend fun upsertMembers(rows: List<MemberRow>)

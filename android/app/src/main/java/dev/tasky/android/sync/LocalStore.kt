@@ -1,6 +1,8 @@
 package dev.tasky.android.sync
 
 import androidx.room.withTransaction
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import dev.tasky.android.api.TaskyJson
 import dev.tasky.android.data.db.OutboxRow
 import dev.tasky.android.data.db.ServerEntityRow
@@ -153,9 +155,7 @@ class LocalStore(
     }
 
     /** Wipes everything, including the outbox (sign-out). */
-    suspend fun wipeAll() = db.withTransaction {
-        db.clearAllTables()
-    }
+    suspend fun wipeAll() = withContext(Dispatchers.IO) { db.clearAllTables() }
 
     private fun decode(row: OutboxRow): Op? =
         runCatching { TaskyJson.decodeFromString(Op.serializer(), row.op) }.getOrNull()

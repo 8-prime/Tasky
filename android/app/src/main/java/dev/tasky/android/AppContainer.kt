@@ -57,8 +57,12 @@ class AppContainer(private val context: Context) {
     val repository = TaskyRepository(store, hlc) { coordinator.onLocalEdit() }
 
     val account: AccountRepository = AccountRepository(http, sessions, db, ::sessionApi) {
-        coordinator.request()
-        if (foreground) live.start()
+        if (foreground) {
+            live.start()
+            coordinator.startForeground()
+        } else {
+            coordinator.request()
+        }
     }
 
     val live: LiveConnection = LiveConnection(
