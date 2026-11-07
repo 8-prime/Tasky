@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -194,7 +195,8 @@ private fun DayCard(day: DayPlan, isToday: Boolean, onAdd: (MealSlot) -> Unit, o
                     Text(
                         slotLabel(slot),
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        // Derived from the card's content color so it stays readable on today's highlighted card.
+                        color = LocalContentColor.current.copy(alpha = 0.72f),
                         modifier = Modifier.width(84.dp).padding(top = 12.dp),
                     )
                     Column(Modifier.weight(1f)) {
@@ -219,7 +221,7 @@ private fun EntryLine(e: EntryView, onClick: () -> Unit) {
             if (e.onListCount > 0) add(stringResource(R.string.plan_on_list))
             e.row.note?.let { add(it) }
         }
-        Text(details.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(details.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = LocalContentColor.current.copy(alpha = 0.72f))
     }
 }
 

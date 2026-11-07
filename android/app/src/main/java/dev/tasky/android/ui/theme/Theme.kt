@@ -3,11 +3,14 @@ package dev.tasky.android.ui.theme
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
@@ -24,5 +27,10 @@ fun TaskyTheme(content: @Composable () -> Unit) {
         dark -> darkColorScheme(primary = GreenLight, secondary = GreenLight)
         else -> lightColorScheme(primary = Green, secondary = Green)
     }
-    MaterialTheme(colorScheme = colors, content = content)
+    MaterialTheme(colorScheme = colors) {
+        // A root Surface gives every screen the theme background and a matching content color.
+        // Without it, text outside a Scaffold (e.g. onboarding) falls back to black, which is
+        // unreadable on the dark window background.
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, content = content)
+    }
 }
