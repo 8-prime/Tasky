@@ -1,5 +1,6 @@
 package dev.tasky.android.ui
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -74,7 +75,7 @@ fun MainScaffold(container: AppContainer) {
         container.syncEngine.rejections.collect { snackbar.showSnackbar(resources.getString(R.string.error_rejected, it.message)) }
     }
 
-    Scaffold(
+    TabsScaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             if (onTab) {
@@ -96,11 +97,11 @@ fun MainScaffold(container: AppContainer) {
                 }
             }
         },
-    ) { padding ->
+    ) { contentModifier ->
         NavHost(
             navController = nav,
             startDestination = ListRoute,
-            modifier = Modifier.padding(bottom = padding.calculateBottomPadding()).consumeWindowInsets(padding),
+            modifier = contentModifier,
         ) {
             composable<ListRoute> {
                 ShoppingListScreen(viewModel { ShoppingListViewModel(container.repository) })
@@ -119,5 +120,25 @@ fun MainScaffold(container: AppContainer) {
                 HouseholdScreen(viewModel { HouseholdViewModel(container) })
             }
         }
+    }
+}
+
+/**
+ * Outer scaffold holding the bottom navigation. It only reserves the bottom bar's height:
+ * the status bar is left to each screen's own top app bar. (Previously it consumed all
+ * system-bar insets while padding only the bottom, so inner top bars drew under the status bar.)
+ */
+@Composable
+internal fun TabsScaffold(
+    snackbarHost: @Composable () -> Unit = {},
+    bottomBar: @Composable () -> Unit,
+    content: @Composable (Modifier) -> Unit,
+) {
+    Scaffold(
+        snackbarHost = snackbarHost,
+        bottomBar = bottomBar,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+    ) { padding ->
+        content(Modifier.padding(padding).consumeWindowInsets(padding))
     }
 }
