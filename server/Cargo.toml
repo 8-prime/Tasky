@@ -1,0 +1,18 @@
+[workspace]
+resolver = "3"
+members = ["crates/tasky-api", "crates/tasky-server"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+# Password hashing is far too slow unoptimized; keep debug builds and tests snappy.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+strip = true

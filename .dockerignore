@@ -1,0 +1,6 @@
+server/target
+android
+api
+docs
+.git
+*.db*

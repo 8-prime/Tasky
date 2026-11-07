@@ -1,0 +1,19 @@
+# Rust
+/server/target/
+# Local databases
+*.db
+*.db-shm
+*.db-wal
+# Android / Gradle
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.kotlin/
+captures/
+*.apk
+*.aab
+*.keystore
+*.jks
+.DS_Store

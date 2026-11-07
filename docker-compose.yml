@@ -1,0 +1,17 @@
+services:
+  tasky:
+    image: ghcr.io/8-prime/tasky:latest
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - tasky-data:/data
+    environment:
+      RUST_LOG: info
+      # Optional: a fixed, reusable household-creation token instead of the
+      # random single-use one printed in the log (`docker compose logs tasky`).
+      # TASKY_SETUP_TOKEN: change-me
+
+volumes:
+  tasky-data:

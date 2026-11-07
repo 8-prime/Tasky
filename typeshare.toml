@@ -1,0 +1,7 @@
+[kotlin]
+package = "dev.tasky.api"
+
+[kotlin.type_mappings]
+"Uuid" = "String"
+"Millis" = "Long"
+"Seq" = "Long"
