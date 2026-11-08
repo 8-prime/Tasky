@@ -4,6 +4,9 @@ import dev.tasky.api.ContributionData
 import dev.tasky.api.ContributionField
 import dev.tasky.api.EntityData
 import dev.tasky.api.EntityKind
+import dev.tasky.api.ExpenseData
+import dev.tasky.api.ExpenseField
+import dev.tasky.api.ExpenseKind
 import dev.tasky.api.ItemData
 import dev.tasky.api.ItemField
 import dev.tasky.api.MealIngredientData
@@ -31,6 +34,25 @@ class OpApplierTest {
         )
         assertEquals(EntityData.Item(ItemData("Oat milk", null, "l")), OpApplier.materialize(null, ops, "me"))
         assertNull(OpApplier.materialize(milk, listOf(op("i", OpAction.Delete(EntityKind.Item))), "me"))
+    }
+
+    @Test
+    fun expenseFieldsApply() {
+        val rent = ExpenseData(
+            description = "Rent", amount_minor = 100_000, currency = "EUR", date = "2026-11-01",
+            paid_by = "a", split_among = listOf("a", "b"), kind = ExpenseKind.Expense,
+        )
+        val ops = listOf(
+            op("e", OpAction.Create(EntityData.Expense(rent))),
+            op("e", OpAction.SetExpense(ExpenseField.AmountMinor(120_000))),
+            op("e", OpAction.SetExpense(ExpenseField.SplitAmong(listOf("b")))),
+            op("e", OpAction.SetExpense(ExpenseField.Category("Home"))),
+            op("e", OpAction.SetExpense(ExpenseField.PaidBy("b"))),
+        )
+        assertEquals(
+            EntityData.Expense(rent.copy(amount_minor = 120_000, split_among = listOf("b"), category = "Home", paid_by = "b")),
+            OpApplier.materialize(null, ops, "me"),
+        )
     }
 
     @Test

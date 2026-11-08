@@ -3,6 +3,7 @@ package dev.tasky.android.sync
 import dev.tasky.api.ContributionField
 import dev.tasky.api.EntityData
 import dev.tasky.api.EntityKind
+import dev.tasky.api.ExpenseField
 import dev.tasky.api.ItemField
 import dev.tasky.api.ListEntryField
 import dev.tasky.api.ListField
@@ -21,6 +22,7 @@ val EntityData.kind: EntityKind
         is EntityData.MealIngredient -> EntityKind.MealIngredient
         is EntityData.PlanEntry -> EntityKind.PlanEntry
         is EntityData.ListEntry -> EntityKind.ListEntry
+        is EntityData.Expense -> EntityKind.Expense
     }
 
 val OpAction.kind: EntityKind
@@ -34,6 +36,7 @@ val OpAction.kind: EntityKind
         is OpAction.SetMealIngredient -> EntityKind.MealIngredient
         is OpAction.SetPlanEntry -> EntityKind.PlanEntry
         is OpAction.SetListEntry -> EntityKind.ListEntry
+        is OpAction.SetExpense -> EntityKind.Expense
     }
 
 /** Same rule as the server: lowercase, trimmed, single-spaced. */
@@ -133,6 +136,18 @@ object OpApplier {
                 is PlanEntryField.FreeText -> cur.value.copy(free_text = f.value)
                 is PlanEntryField.Servings -> cur.value.copy(servings = f.value)
                 is PlanEntryField.Note -> cur.value.copy(note = f.value)
+            },
+        )
+        cur is EntityData.Expense && action is OpAction.SetExpense -> EntityData.Expense(
+            when (val f = action.value) {
+                is ExpenseField.Description -> cur.value.copy(description = f.value)
+                is ExpenseField.AmountMinor -> cur.value.copy(amount_minor = f.value)
+                is ExpenseField.Currency -> cur.value.copy(currency = f.value)
+                is ExpenseField.Date -> cur.value.copy(date = f.value)
+                is ExpenseField.PaidBy -> cur.value.copy(paid_by = f.value)
+                is ExpenseField.SplitAmong -> cur.value.copy(split_among = f.value)
+                is ExpenseField.Category -> cur.value.copy(category = f.value)
+                is ExpenseField.Note -> cur.value.copy(note = f.value)
             },
         )
         else -> cur

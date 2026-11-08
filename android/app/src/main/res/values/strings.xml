@@ -65,6 +65,7 @@
     <string name="nav_plan">Plan</string>
     <string name="nav_meals">Meals</string>
     <string name="nav_household">Household</string>
+    <string name="nav_expenses">Expenses</string>
     <string name="more_options">More options</string>
     <string name="someone">Someone</string>
 
@@ -165,6 +166,44 @@
         <item quantity="one">Add %1$d item</item>
         <item quantity="other">Add %1$d items</item>
     </plurals>
+    <!-- Expenses -->
+    <string name="expenses_title">Expenses</string>
+    <string name="expenses_empty">No expenses yet. Add what you spend for the household, and Tasky works out who owes whom.</string>
+    <string name="expenses_month_spent">Spent %1$s</string>
+    <string name="expenses_month_your_share">Your share %1$s</string>
+    <string name="expense_new">Add expense</string>
+    <string name="expense_edit">Edit expense</string>
+    <string name="expense_description">What for</string>
+    <string name="expense_currency">Currency</string>
+    <string name="expense_paid_by">Paid by</string>
+    <string name="expense_split">Shared by</string>
+    <string name="expense_split_everyone">Everyone</string>
+    <string name="expense_split_each">%1$s each</string>
+    <string name="expense_split_range">%1$s–%2$s each</string>
+    <string name="expense_split_error">Choose at least one person.</string>
+    <string name="expense_paid_shared_everyone">%1$s paid, shared by everyone</string>
+    <string name="expense_paid_shared">%1$s paid, shared by %2$s</string>
+    <string name="expense_paid_for">%1$s paid for %2$s</string>
+    <string name="expense_your_share">You: %1$s</string>
+    <string name="expense_delete_title">Delete “%1$s”?</string>
+    <string name="expense_delete_text">It’s removed for everyone, and balances are worked out again.</string>
+    <string name="balances_title">Balances</string>
+    <string name="balances_title_currency">Balances in %1$s</string>
+    <string name="balances_all_settled">Everyone is settled up.</string>
+    <string name="balance_gets_back">gets back %1$s</string>
+    <string name="balance_owes">owes %1$s</string>
+    <string name="balance_settled">settled up</string>
+    <string name="settle_up">Settle up</string>
+    <string name="settle_up_help">These payments clear every balance. Tap one once the money has changed hands to record it.</string>
+    <string name="settle_up_transfer">%1$s pays %2$s</string>
+    <string name="settle_up_other">Other payment</string>
+    <string name="settlement_new">Record a payment</string>
+    <string name="settlement_edit">Edit payment</string>
+    <string name="settlement_help">Money paid back between two people. It doesn’t count as spending.</string>
+    <string name="settlement_from">From</string>
+    <string name="settlement_to">To</string>
+    <string name="settlement_title">%1$s paid %2$s</string>
+    <string name="settlement_delete_title">Delete this payment?</string>
     <!-- Household -->
     <string name="household_name">Household name</string>
     <string name="household_rename">Rename household</string>

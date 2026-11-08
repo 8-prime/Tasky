@@ -20,6 +20,8 @@ import dev.tasky.android.domain.MealPlanning
 import dev.tasky.android.sync.Hlc
 import dev.tasky.android.sync.LocalStore
 import dev.tasky.android.sync.Uuids
+import dev.tasky.android.ui.expenses.ExpensesScreen
+import dev.tasky.android.ui.expenses.ExpensesViewModel
 import dev.tasky.android.ui.list.ShoppingListScreen
 import dev.tasky.android.ui.list.ShoppingListViewModel
 import dev.tasky.android.ui.meals.MealEditScreen
@@ -114,6 +116,26 @@ class ScreensTest {
         waitFor("Added Eggs")
         waitForDb { q.itemByNormName("eggs") != null }
         assertTrue(edits >= 4)
+    }
+
+    /** Balances and settle-up suggestions follow from the entries (dialog text fields aren't driven, see below). */
+    @Test
+    fun expensesShowBalancesAndSettleUp() {
+        runBlocking { seedExpenses(db, repo) }
+        val vm = ExpensesViewModel(repo, dev.tasky.android.data.SessionStore(ApplicationProvider.getApplicationContext(), PlainBox))
+        compose.setContent { TaskyTheme { ExpensesScreen(vm) } }
+        // Anna paid 1200 + 59 and owes 600 + 21.25 → +637.75, minus Ben's 300 repayment → +337.75.
+        waitFor("gets back €337.75")
+        compose.onNodeWithText("owes €337.75").assertExists()
+        compose.onNodeWithText("Ben paid Anna").assertExists()
+        compose.onNodeWithText("Ben paid, shared by everyone").assertExists()
+        compose.onNodeWithText("Anna paid for Ben").assertExists()
+        // Spending excludes the repayment.
+        compose.onNodeWithText("Spent €1,301.50").assertExists()
+
+        compose.onNode(hasText("Settle up") and hasClickAction()).performClick()
+        waitFor("Ben pays Anna")
+        compose.onNodeWithText("Other payment").assertExists()
     }
 
     /**

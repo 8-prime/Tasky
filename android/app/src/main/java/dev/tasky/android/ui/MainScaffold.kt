@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -34,6 +35,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import dev.tasky.android.AppContainer
 import dev.tasky.android.R
+import dev.tasky.android.ui.expenses.ExpensesScreen
+import dev.tasky.android.ui.expenses.ExpensesViewModel
 import dev.tasky.android.ui.household.HouseholdScreen
 import dev.tasky.android.ui.household.HouseholdViewModel
 import dev.tasky.android.ui.list.ShoppingListScreen
@@ -49,6 +52,7 @@ import kotlinx.serialization.Serializable
 @Serializable object ListRoute
 @Serializable object PlanRoute
 @Serializable object MealsRoute
+@Serializable object ExpensesRoute
 @Serializable object HouseholdRoute
 @Serializable data class MealEditRoute(val mealId: String? = null)
 
@@ -58,6 +62,7 @@ private val tabs = listOf(
     Tab(ListRoute, R.string.nav_list, Icons.AutoMirrored.Filled.List),
     Tab(PlanRoute, R.string.nav_plan, Icons.Filled.CalendarMonth),
     Tab(MealsRoute, R.string.nav_meals, Icons.Filled.RestaurantMenu),
+    Tab(ExpensesRoute, R.string.nav_expenses, Icons.Filled.Payments),
     Tab(HouseholdRoute, R.string.nav_household, Icons.Filled.Home),
 )
 
@@ -115,6 +120,9 @@ fun MainScaffold(container: AppContainer) {
             composable<MealEditRoute> { entry ->
                 val route = entry.toRoute<MealEditRoute>()
                 MealEditScreen(viewModel { MealEditViewModel(container.repository, route.mealId) }) { nav.popBackStack() }
+            }
+            composable<ExpensesRoute> {
+                ExpensesScreen(viewModel { ExpensesViewModel(container.repository, container.sessions) })
             }
             composable<HouseholdRoute> {
                 HouseholdScreen(viewModel { HouseholdViewModel(container) })

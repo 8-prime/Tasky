@@ -7,6 +7,7 @@ import dev.tasky.android.api.ApiException
 import dev.tasky.android.data.Session
 import dev.tasky.android.data.TaskyRepository
 import dev.tasky.android.data.db.TaskyDatabase
+import dev.tasky.android.domain.Expenses
 import dev.tasky.android.domain.MealPlanning
 import dev.tasky.android.domain.ShoppingList
 import dev.tasky.android.domain.Units
@@ -109,6 +110,42 @@ class ServerEndToEndTest {
     private suspend fun syncAll(vararg ds: Device) {
         // Twice around, so everyone sees everyone's changes.
         repeat(2) { ds.forEach { it.engine.sync() } }
+    }
+
+    @Test
+    fun expensesSyncAndSettleUpToZero() = runBlocking {
+        val (a, b) = household()
+        syncAll(a, b)
+        val (anna, ben) = a.session.userId to b.session.userId
+
+        // A pays the rent for both; B (offline) buys groceries for both.
+        val rent = a.repo.createExpense(TaskyRepository.ExpenseInput("Rent", 100_000, "EUR", "2026-11-01", anna, listOf(anna, ben), "Home"))
+        b.repo.createExpense(TaskyRepository.ExpenseInput("Weekly shop", 4_251, "EUR", "2026-11-02", ben, listOf(anna, ben)))
+        syncAll(a, b)
+
+        // Concurrent edits to different fields of the rent both survive.
+        a.repo.updateExpense(a.q.expenses().first().single { it.id == rent }, TaskyRepository.ExpenseInput("Rent", 110_000, "EUR", "2026-11-01", anna, listOf(anna, ben), "Home"))
+        b.repo.updateExpense(b.q.expenses().first().single { it.id == rent }, TaskyRepository.ExpenseInput("Rent", 100_000, "EUR", "2026-11-01", anna, listOf(anna, ben), "Housing"))
+        syncAll(a, b)
+
+        for (d in listOf(a, b)) {
+            val r = d.q.expenses().first().single { it.id == rent }
+            assertEquals(110_000L to "Housing", r.amountMinor to r.category)
+        }
+        val balances = Expenses.balances(a.q.expenses().first())["EUR"]!!
+        assertEquals(balances, Expenses.balances(b.q.expenses().first())["EUR"])
+        assertEquals(0L, balances.values.sum())
+        val transfer = Expenses.settleUp(balances, "EUR").single()
+        assertEquals(ben to anna, transfer.from to transfer.to)
+
+        // B pays it back; both devices agree everyone is settled.
+        b.repo.recordSettlement(transfer.from, transfer.to, transfer.amountMinor, "EUR", "2026-11-08")
+        syncAll(b, a)
+        for (d in listOf(a, b)) {
+            assertTrue(Expenses.balances(d.q.expenses().first())["EUR"]!!.values.all { it == 0L })
+            assertEquals(mapOf("EUR" to 114_251L), Expenses.spent(d.q.expenses().first()))
+            assertEquals(0, d.db.outbox().count())
+        }
     }
 
     @Test

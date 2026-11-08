@@ -27,11 +27,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -65,6 +61,7 @@ import dev.tasky.android.data.db.PlanEntryRow
 import dev.tasky.android.data.db.mealSlotOf
 import dev.tasky.android.domain.MealPlanning
 import dev.tasky.android.domain.Units
+import dev.tasky.android.ui.components.Picker
 import dev.tasky.android.ui.components.ConfirmDialog
 import dev.tasky.android.ui.components.TextLine
 import dev.tasky.api.MealSlot
@@ -242,29 +239,6 @@ private fun EntryActions(e: EntryView, onDismiss: () -> Unit, onEdit: () -> Unit
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },
     )
-}
-
-/** Dropdown over fixed choices. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun <T> Picker(label: Int, options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit, modifier: Modifier = Modifier) {
-    var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }, modifier = modifier) {
-        OutlinedTextField(
-            value = options.firstOrNull { it.first == selected }?.second.orEmpty(),
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(stringResource(label)) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { (value, text) ->
-                DropdownMenuItem(text = { Text(text) }, onClick = { onSelect(value); expanded = false })
-            }
-        }
-    }
 }
 
 @Composable

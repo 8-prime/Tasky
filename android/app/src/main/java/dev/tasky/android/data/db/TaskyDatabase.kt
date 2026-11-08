@@ -10,12 +10,16 @@ import androidx.room.RoomDatabase
     entities = [
         ItemRow::class, ListRow::class, ContributionRow::class, MealRow::class, MealIngredientRow::class,
         PlanEntryRow::class, ServerEntityRow::class, OutboxRow::class, MemberRow::class, SyncStateRow::class,
-        ListEntryRow::class,
+        ListEntryRow::class, ExpenseRow::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
-    // 1 → 2: list kinds (lists.kind, lists.body) and checklist entries. Keeps the outbox.
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    autoMigrations = [
+        // 1 → 2: list kinds (lists.kind, lists.body) and checklist entries. Keeps the outbox.
+        AutoMigration(from = 1, to = 2),
+        // 2 → 3: expenses.
+        AutoMigration(from = 2, to = 3),
+    ],
 )
 abstract class TaskyDatabase : RoomDatabase() {
     abstract fun entities(): EntityDao
