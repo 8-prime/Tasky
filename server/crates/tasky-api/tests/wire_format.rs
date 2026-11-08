@@ -66,6 +66,34 @@ fn optional_fields_may_be_omitted_by_clients() {
 }
 
 #[test]
+fn expense_shape() {
+    let data = EntityData::Expense(ExpenseData {
+        description: "Rent".into(),
+        amount_minor: 120_000,
+        currency: "EUR".into(),
+        date: "2026-11-01".into(),
+        paid_by: ID,
+        split_among: vec![ID],
+        category: None,
+        note: None,
+        kind: Some(ExpenseKind::Expense),
+    });
+    assert_eq!(
+        serde_json::to_value(&data).unwrap(),
+        json!({"type": "expense", "value": {
+            "description": "Rent", "amount_minor": 120000, "currency": "EUR", "date": "2026-11-01",
+            "paid_by": "0193a4f1-c2d0-7000-8000-000000000001",
+            "split_among": ["0193a4f1-c2d0-7000-8000-000000000001"],
+            "category": null, "note": null, "kind": "expense"
+        }})
+    );
+    assert_eq!(
+        serde_json::to_value(OpAction::SetExpense(ExpenseField::SplitAmong(vec![ID]))).unwrap(),
+        json!({"type": "set_expense", "value": {"type": "split_among", "value": ["0193a4f1-c2d0-7000-8000-000000000001"]}})
+    );
+}
+
+#[test]
 fn live_event() {
     let ev = LiveEvent {
         kind: LiveEventKind::HouseholdChanged,

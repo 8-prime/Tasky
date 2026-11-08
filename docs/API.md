@@ -73,6 +73,7 @@ Rules:
 | `meal` | `name`, `default_servings`, `notes?`, `url?` | Known-meals catalog. Recipes are out of scope for now. |
 | `meal_ingredient` | `meal_id`, `item_id`, `amount?`, `unit?`, `note?` | Ingredients of a meal. |
 | `plan_entry` | `date` (`YYYY-MM-DD`), `slot` (`breakfast`/`lunch`/`dinner`), `owner_user_id?`, `meal_id?`, `free_text?`, `servings?`, `note?` | `owner_user_id = null` means a household meal. Needs `meal_id` or `free_text`. |
+| `expense` | `description`, `amount_minor`, `currency`, `date`, `paid_by`, `split_among`, `category?`, `note?`, `kind?` (`expense`/`settlement`) | One entry of the expense book. Money is an integer in the currency's minor unit (cents). A missing `kind` means `expense`; it's set on create and can't be changed. |
 
 Validation limits:
 - **Names:** 1–200 characters, and not blank.
@@ -84,7 +85,8 @@ Validation limits:
 - **free_text:** ≤200 characters.
 - **Amount:** finite, 0 to 1e9.
 - **Servings:** 1–1000.
-- **References:** must point to an entity of the right kind in the same household. `owner_user_id` must be a member.
+- **Expenses:** `description` 1–200 characters and not blank; `amount_minor` 1 to 10¹²; `currency` exactly three uppercase letters (ISO 4217); `split_among` 1–100 members without duplicates. A settlement has exactly one entry in `split_among`, and it isn't `paid_by`.
+- **References:** must point to an entity of the right kind in the same household. `owner_user_id`, `paid_by` and everyone in `split_among` must be members.
 
 ### Shopping list semantics (computed on the client)
 
@@ -129,6 +131,20 @@ A **list line** is `(list_id, item_id)`. Its contributions are all `contribution
   Test vector: entry `00000000-0000-0000-0000-000000000001`, ingredient `…0002` → `79f48edd-396a-5e27-b339-9c3997d57a61`.
 - **Deleting a plan entry:** also delete its contributions that are not yet purchased.
 
+### Expenses (computed on the client)
+
+The server only stores entries; balances are derived from them. Every client must use these exact integer rules so all phones show the same numbers, to the cent.
+
+- **Shares:** an entry's `amount_minor` is split equally between the distinct ids in `split_among`. Sort the ids ascending (as strings); each gets `amount / n`, and the first `amount % n` of them get one more. Shares always add up to the amount.
+  Example: 1000 between `c`, `a`, `b` → `a` 334, `b` 333, `c` 333.
+- **Balances** are kept per `currency` and never converted. For each entry, `paid_by` gets `+amount_minor` and each person in `split_among` gets `−share`. Positive means the household owes them; the balances of a currency sum to zero.
+- **Settlements** (`kind = settlement`): `paid_by` paid `split_among[0]` back. They use the same balance rule, which is what moves debts back to zero, but they don't count as spending.
+- **"The whole household"** is stored as the list of members at the time of entry, not as a flag, so people who join later don't owe old bills.
+- **Suggested repayments** (optional, for a "settle up" screen): repeatedly let the member who owes most pay the member who is owed most, `min` of the two amounts, breaking ties by id.
+- **Spending** for a period: the sum of `amount_minor` of non-settlement entries in it, per currency.
+- **Editing a settlement's people:** the server validates after every op, so swapping payer and recipient can't be done field by field (the intermediate state pays someone back to themselves). Delete the entry and create a new one instead.
+- **Compatibility:** apps from before expenses can't decode `expense` entities. Update all phones together with the server.
+
 ## Sync protocol
 
 Design goals:
@@ -159,6 +175,7 @@ An op changes one entity:
 | `set_meal` | `name`, `default_servings`, `notes`, `url` | |
 | `set_meal_ingredient` | `item_id`, `amount`, `unit`, `note` | |
 | `set_plan_entry` | `date`, `slot`, `owner_user_id`, `meal_id`, `free_text`, `servings`, `note` | |
+| `set_expense` | `description`, `amount_minor`, `currency`, `date`, `paid_by`, `split_among`, `category`, `note` | `split_among` is replaced as a whole. |
 
 To clear an optional field, send `"value": null`.
 

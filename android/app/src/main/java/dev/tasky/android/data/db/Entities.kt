@@ -92,6 +92,33 @@ data class PlanEntryRow(
     val note: String?,
 )
 
+/**
+ * One entry of the expense book. Money is in minor units of [currency] (cents for EUR).
+ * IDs are UUIDv7, so ordering by id within a day is creation order.
+ */
+@Entity(tableName = "expenses", indices = [Index("date")])
+data class ExpenseRow(
+    @PrimaryKey val id: String,
+    val description: String,
+    val amountMinor: Long,
+    val currency: String,
+    /** `YYYY-MM-DD` */
+    val date: String,
+    val paidBy: String,
+    /** Member ids sharing the cost, comma-separated (UUIDs never contain commas). */
+    val splitAmong: String,
+    val category: String?,
+    val note: String?,
+    /** `expense` / `settlement` */
+    val kind: String,
+) {
+    val participants: List<String> get() = splitAmong.split(',').filter { it.isNotEmpty() }
+    val isSettlement get() = kind == EXPENSE_SETTLEMENT
+}
+
+const val EXPENSE_REGULAR = "expense"
+const val EXPENSE_SETTLEMENT = "settlement"
+
 /** Last state received from the server, as `EntityData` JSON. Tombstones are not kept. */
 @Entity(tableName = "server_entities")
 data class ServerEntityRow(

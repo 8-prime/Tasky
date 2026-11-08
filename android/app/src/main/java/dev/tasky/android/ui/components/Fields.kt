@@ -82,6 +82,65 @@ fun ItemNameField(
     }
 }
 
+/** A read-only dropdown choosing one of [options] (value to label). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun <T> Picker(label: Int, options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit, modifier: Modifier = Modifier) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }, modifier = modifier) {
+        OutlinedTextField(
+            value = options.firstOrNull { it.first == selected }?.second.orEmpty(),
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(stringResource(label)) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { (value, text) ->
+                DropdownMenuItem(text = { Text(text) }, onClick = { onSelect(value); expanded = false })
+            }
+        }
+    }
+}
+
+/** Free text with earlier values offered as you type (e.g. expense categories). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SuggestionField(value: String, onValueChange: (String) -> Unit, label: Int, suggestions: List<String>, modifier: Modifier = Modifier) {
+    var expanded by remember { mutableStateOf(false) }
+    val query = normalizeName(value)
+    val matches = remember(query, suggestions) {
+        suggestions.filter { normalizeName(it).let { s -> s.contains(query) && s != query } }.take(6)
+    }
+    ExposedDropdownMenuBox(expanded = expanded && matches.isNotEmpty(), onExpandedChange = { expanded = it }, modifier = modifier) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {
+                onValueChange(it)
+                expanded = true
+            },
+            label = { Text(stringResource(label)) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
+            modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable),
+        )
+        ExposedDropdownMenu(expanded = expanded && matches.isNotEmpty(), onDismissRequest = { expanded = false }) {
+            matches.forEach { s ->
+                DropdownMenuItem(
+                    text = { Text(s) },
+                    onClick = {
+                        onValueChange(s)
+                        expanded = false
+                    },
+                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                )
+            }
+        }
+    }
+}
+
 /** Unit with the recommended codes in a menu; any other text is allowed. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

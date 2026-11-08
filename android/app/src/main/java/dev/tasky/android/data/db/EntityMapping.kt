@@ -4,6 +4,8 @@ import dev.tasky.android.sync.normalizeName
 import dev.tasky.api.ContributionData
 import dev.tasky.api.EntityData
 import dev.tasky.api.EntityKind
+import dev.tasky.api.ExpenseData
+import dev.tasky.api.ExpenseKind
 import dev.tasky.api.ItemData
 import dev.tasky.api.ListData
 import dev.tasky.api.ListEntryData
@@ -33,6 +35,19 @@ fun PlanEntryRow.toData() = PlanEntryData(
     free_text = freeText, servings = servings, note = note,
 )
 
+fun expenseKindCode(kind: ExpenseKind?): String = kind?.string ?: EXPENSE_REGULAR
+fun expenseKindOf(code: String): ExpenseKind = ExpenseKind.entries.firstOrNull { it.string == code } ?: ExpenseKind.Expense
+
+fun ExpenseRow.toData() = ExpenseData(
+    description = description, amount_minor = amountMinor, currency = currency, date = date, paid_by = paidBy,
+    split_among = participants, category = category, note = note, kind = expenseKindOf(kind),
+)
+
+fun ExpenseData.toRow(id: String) = ExpenseRow(
+    id = id, description = description, amountMinor = amount_minor, currency = currency, date = date, paidBy = paid_by,
+    splitAmong = split_among.joinToString(","), category = category, note = note, kind = expenseKindCode(kind),
+)
+
 /** Reads the visible state of an entity. */
 suspend fun EntityDao.getVisible(kind: EntityKind, id: String): EntityData? = when (kind) {
     EntityKind.Item -> item(id)?.let { EntityData.Item(it.toData()) }
@@ -42,6 +57,7 @@ suspend fun EntityDao.getVisible(kind: EntityKind, id: String): EntityData? = wh
     EntityKind.MealIngredient -> mealIngredient(id)?.let { EntityData.MealIngredient(it.toData()) }
     EntityKind.PlanEntry -> planEntry(id)?.let { EntityData.PlanEntry(it.toData()) }
     EntityKind.ListEntry -> listEntry(id)?.let { EntityData.ListEntry(it.toData()) }
+    EntityKind.Expense -> expense(id)?.let { EntityData.Expense(it.toData()) }
 }
 
 /** Writes the visible state of an entity; `null` removes it. */
@@ -63,6 +79,7 @@ suspend fun EntityDao.putVisible(id: String, data: EntityData?) {
         is EntityData.PlanEntry -> data.value.let {
             upsert(PlanEntryRow(id, it.date, it.slot.code(), it.owner_user_id, it.meal_id, it.free_text, it.servings, it.note))
         }
+        is EntityData.Expense -> upsert(data.value.toRow(id))
     }
 }
 
@@ -75,6 +92,7 @@ suspend fun EntityDao.deleteVisible(id: String) {
     deleteMealIngredient(id)
     deletePlanEntry(id)
     deleteListEntry(id)
+    deleteExpense(id)
 }
 
 suspend fun EntityDao.clearVisible() {
@@ -85,4 +103,5 @@ suspend fun EntityDao.clearVisible() {
     clearMealIngredients()
     clearPlanEntries()
     clearListEntries()
+    clearExpenses()
 }

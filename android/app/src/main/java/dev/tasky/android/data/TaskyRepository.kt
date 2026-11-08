@@ -1,5 +1,6 @@
 package dev.tasky.android.data
 
+import dev.tasky.android.data.db.ExpenseRow
 import dev.tasky.android.data.db.MealIngredientRow
 import dev.tasky.android.data.db.MealRow
 import dev.tasky.android.data.db.PlanEntryRow
@@ -13,6 +14,9 @@ import dev.tasky.api.ContributionData
 import dev.tasky.api.ContributionField
 import dev.tasky.api.EntityData
 import dev.tasky.api.EntityKind
+import dev.tasky.api.ExpenseData
+import dev.tasky.api.ExpenseField
+import dev.tasky.api.ExpenseKind
 import dev.tasky.api.ItemData
 import dev.tasky.api.ItemField
 import dev.tasky.api.ListData
@@ -286,9 +290,66 @@ class TaskyRepository(
         },
     )
 
+    // ---------- expenses ----------
+
+    data class ExpenseInput(
+        val description: String,
+        val amountMinor: Long,
+        val currency: String,
+        val date: String,
+        val paidBy: String,
+        val splitAmong: List<String>,
+        val category: String? = null,
+        val note: String? = null,
+    )
+
+    suspend fun createExpense(input: ExpenseInput, kind: ExpenseKind = ExpenseKind.Expense): String {
+        val id = Uuids.v7()
+        val data = ExpenseData(
+            description = input.description.trim(), amount_minor = input.amountMinor, currency = input.currency,
+            date = input.date, paid_by = input.paidBy, split_among = input.splitAmong.distinct(),
+            category = input.category.clean(), note = input.note.clean(), kind = kind,
+        )
+        commit(listOf(op(id, OpAction.Create(EntityData.Expense(data)))))
+        return id
+    }
+
+    /** Records that [from] paid [to] back. Balances treat it like an expense [from] paid for [to]. */
+    suspend fun recordSettlement(from: String, to: String, amountMinor: Long, currency: String, date: String): String =
+        createExpense(ExpenseInput(SETTLEMENT_DESCRIPTION, amountMinor, currency, date, from, listOf(to)), ExpenseKind.Settlement)
+
+    /** Sends only the fields that changed, so concurrent edits to other fields survive. */
+    suspend fun updateExpense(cur: ExpenseRow, input: ExpenseInput) {
+        if (cur.isSettlement && (input.paidBy != cur.paidBy || input.splitAmong != cur.participants)) {
+            // The server validates after every op, and a settlement may never be paid to its own
+            // payer. Swapping payer and recipient can't pass through a valid state field by field,
+            // so a settlement between different people is replaced instead.
+            commit(listOf(op(cur.id, OpAction.Delete(EntityKind.Expense))))
+            createExpense(input.copy(description = cur.description), ExpenseKind.Settlement)
+            return
+        }
+        val ops = ArrayList<Op>()
+        fun set(f: ExpenseField) = ops.add(op(cur.id, OpAction.SetExpense(f)))
+        if (input.description.trim() != cur.description) set(ExpenseField.Description(input.description.trim()))
+        if (input.amountMinor != cur.amountMinor) set(ExpenseField.AmountMinor(input.amountMinor))
+        if (input.currency != cur.currency) set(ExpenseField.Currency(input.currency))
+        if (input.date != cur.date) set(ExpenseField.Date(input.date))
+        if (input.paidBy != cur.paidBy) set(ExpenseField.PaidBy(input.paidBy))
+        val split = input.splitAmong.distinct()
+        if (split.toSet() != cur.participants.toSet()) set(ExpenseField.SplitAmong(split))
+        if (input.category.clean() != cur.category) set(ExpenseField.Category(input.category.clean()))
+        if (input.note.clean() != cur.note) set(ExpenseField.Note(input.note.clean()))
+        commit(ops)
+    }
+
+    suspend fun deleteExpense(id: String) = commit(listOf(op(id, OpAction.Delete(EntityKind.Expense))))
+
     /** Contributions (by deterministic id) that already exist locally, in any state. */
     suspend fun existingContributions(ids: List<String>): Set<String> =
         ids.chunked(500).flatMap { queries.existingContributionIds(it) }.toSet()
 }
+
+/** Stored on settlements, which the app labels from payer and recipient instead. */
+private const val SETTLEMENT_DESCRIPTION = "Settle up"
 
 private fun String?.clean(): String? = this?.trim()?.takeIf { it.isNotEmpty() }

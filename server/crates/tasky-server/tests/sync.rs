@@ -688,3 +688,207 @@ async fn lists_from_older_clients_default_to_no_kind() {
     };
     assert_eq!((l.kind, l.body.as_deref()), (None, None));
 }
+
+fn expense(paid_by: Uuid, split_among: Vec<Uuid>, amount_minor: i64) -> ExpenseData {
+    ExpenseData {
+        description: "Weekly shop".into(),
+        amount_minor,
+        currency: "EUR".into(),
+        date: "2026-11-07".into(),
+        paid_by,
+        split_among,
+        category: Some("Groceries".into()),
+        note: None,
+        kind: None,
+    }
+}
+
+fn create_expense(data: ExpenseData) -> OpAction {
+    OpAction::Create(EntityData::Expense(data))
+}
+
+fn as_expense(e: &Entity) -> &ExpenseData {
+    match &e.data {
+        EntityData::Expense(x) => x,
+        other => panic!("not an expense: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn expenses_sync_and_merge_field_by_field() {
+    let s = TestServer::start().await;
+    let anna = s.create_household("anna").await;
+    let bob = s.join(&anna, "bob").await;
+    let (a, b) = (anna.user.id, bob.user.id);
+
+    let shop = Uuid::now_v7();
+    let payback = Uuid::now_v7();
+    let res = s
+        .sync(
+            &anna,
+            0,
+            vec![
+                anna.op(shop, create_expense(expense(a, vec![a, b], 4_250))),
+                anna.op(
+                    payback,
+                    create_expense(ExpenseData {
+                        description: "Settle up".into(),
+                        category: None,
+                        kind: Some(ExpenseKind::Settlement),
+                        ..expense(b, vec![a], 2_125)
+                    }),
+                ),
+            ],
+        )
+        .await;
+    assert!(res.rejected.is_empty(), "{:?}", res.rejected);
+
+    // Bob fixes the amount while Anna recategorises: both edits survive.
+    s.sync(
+        &bob,
+        0,
+        vec![bob.op(shop, OpAction::SetExpense(ExpenseField::AmountMinor(4_390)))],
+    )
+    .await;
+    s.sync(
+        &anna,
+        0,
+        vec![anna.op(
+            shop,
+            OpAction::SetExpense(ExpenseField::Category(Some("Household".into()))),
+        )],
+    )
+    .await;
+
+    let snap = s.snapshot(&bob).await;
+    let e = as_expense(find(&snap, shop).unwrap());
+    assert_eq!(e.amount_minor, 4_390);
+    assert_eq!(e.category.as_deref(), Some("Household"));
+    assert_eq!(e.split_among, vec![a, b]);
+    assert_eq!(e.kind, None);
+    let p = as_expense(find(&snap, payback).unwrap());
+    assert_eq!(
+        (p.kind, p.paid_by, &p.split_among),
+        (Some(ExpenseKind::Settlement), b, &vec![a])
+    );
+
+    // Re-splitting to Bob alone, then deleting.
+    s.sync(
+        &anna,
+        0,
+        vec![anna.op(
+            shop,
+            OpAction::SetExpense(ExpenseField::SplitAmong(vec![b])),
+        )],
+    )
+    .await;
+    assert_eq!(
+        as_expense(find(&s.snapshot(&bob).await, shop).unwrap()).split_among,
+        vec![b]
+    );
+    s.sync(
+        &bob,
+        0,
+        vec![bob.op(shop, OpAction::Delete(EntityKind::Expense))],
+    )
+    .await;
+    assert!(find(&s.snapshot(&anna).await, shop).is_none());
+}
+
+#[tokio::test]
+async fn invalid_expenses_are_rejected() {
+    let s = TestServer::start().await;
+    let anna = s.create_household("anna").await;
+    let bob = s.join(&anna, "bob").await;
+    let outsider = s.create_household("carol").await;
+    let (a, b, c) = (anna.user.id, bob.user.id, outsider.user.id);
+
+    let ok = Uuid::now_v7();
+    let cases: Vec<(ExpenseData, RejectCode)> = vec![
+        (
+            ExpenseData {
+                description: " ".into(),
+                ..expense(a, vec![a], 100)
+            },
+            RejectCode::Validation,
+        ),
+        (expense(a, vec![a], 0), RejectCode::Validation),
+        (expense(a, vec![a], -5), RejectCode::Validation),
+        (
+            expense(a, vec![a], 1_000_000_000_001),
+            RejectCode::Validation,
+        ),
+        (
+            ExpenseData {
+                currency: "eur".into(),
+                ..expense(a, vec![a], 100)
+            },
+            RejectCode::Validation,
+        ),
+        (
+            ExpenseData {
+                currency: "EURO".into(),
+                ..expense(a, vec![a], 100)
+            },
+            RejectCode::Validation,
+        ),
+        (
+            ExpenseData {
+                date: "7.11.2026".into(),
+                ..expense(a, vec![a], 100)
+            },
+            RejectCode::Validation,
+        ),
+        (expense(a, vec![], 100), RejectCode::Validation),
+        (expense(a, vec![a, b, a], 100), RejectCode::Validation),
+        (expense(a, vec![a, c], 100), RejectCode::InvalidReference),
+        (expense(c, vec![a], 100), RejectCode::InvalidReference),
+        (
+            ExpenseData {
+                kind: Some(ExpenseKind::Settlement),
+                ..expense(a, vec![a], 100)
+            },
+            RejectCode::Validation,
+        ),
+        (
+            ExpenseData {
+                kind: Some(ExpenseKind::Settlement),
+                ..expense(a, vec![a, b], 100)
+            },
+            RejectCode::Validation,
+        ),
+    ];
+    let mut ops: Vec<Op> = cases
+        .iter()
+        .map(|(data, _)| anna.op(Uuid::now_v7(), create_expense(data.clone())))
+        .collect();
+    let mut expected: Vec<RejectCode> = cases.iter().map(|(_, code)| *code).collect();
+
+    // A valid expense, then set ops that would break it.
+    ops.push(anna.op(ok, create_expense(expense(a, vec![a, b], 1_000))));
+    for field in [
+        ExpenseField::SplitAmong(vec![]),
+        ExpenseField::PaidBy(c),
+        ExpenseField::AmountMinor(0),
+        ExpenseField::Currency("€".into()),
+    ] {
+        ops.push(anna.op(ok, OpAction::SetExpense(field)));
+    }
+    expected.extend([
+        RejectCode::Validation,
+        RejectCode::InvalidReference,
+        RejectCode::Validation,
+        RejectCode::Validation,
+    ]);
+
+    let res = s.sync(&anna, 0, ops).await;
+    let codes: Vec<_> = res.rejected.iter().map(|r| r.code).collect();
+    assert_eq!(codes, expected, "{:#?}", res.rejected);
+    // The valid one landed unchanged.
+    let snap = s.snapshot(&anna).await;
+    let e = as_expense(find(&snap, ok).unwrap());
+    assert_eq!(
+        (e.amount_minor, e.paid_by, e.split_among.len()),
+        (1_000, a, 2)
+    );
+}

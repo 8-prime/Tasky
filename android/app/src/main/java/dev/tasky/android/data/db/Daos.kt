@@ -15,6 +15,7 @@ interface EntityDao {
     @Query("SELECT * FROM meal_ingredients WHERE id = :id") suspend fun mealIngredient(id: String): MealIngredientRow?
     @Query("SELECT * FROM plan_entries WHERE id = :id") suspend fun planEntry(id: String): PlanEntryRow?
     @Query("SELECT * FROM list_entries WHERE id = :id") suspend fun listEntry(id: String): ListEntryRow?
+    @Query("SELECT * FROM expenses WHERE id = :id") suspend fun expense(id: String): ExpenseRow?
 
     @Upsert suspend fun upsert(row: ItemRow)
     @Upsert suspend fun upsert(row: ListRow)
@@ -23,6 +24,7 @@ interface EntityDao {
     @Upsert suspend fun upsert(row: MealIngredientRow)
     @Upsert suspend fun upsert(row: PlanEntryRow)
     @Upsert suspend fun upsert(row: ListEntryRow)
+    @Upsert suspend fun upsert(row: ExpenseRow)
 
     @Query("DELETE FROM items WHERE id = :id") suspend fun deleteItem(id: String)
     @Query("DELETE FROM lists WHERE id = :id") suspend fun deleteList(id: String)
@@ -31,6 +33,7 @@ interface EntityDao {
     @Query("DELETE FROM meal_ingredients WHERE id = :id") suspend fun deleteMealIngredient(id: String)
     @Query("DELETE FROM plan_entries WHERE id = :id") suspend fun deletePlanEntry(id: String)
     @Query("DELETE FROM list_entries WHERE id = :id") suspend fun deleteListEntry(id: String)
+    @Query("DELETE FROM expenses WHERE id = :id") suspend fun deleteExpense(id: String)
 
     @Query("DELETE FROM items") suspend fun clearItems()
     @Query("DELETE FROM lists") suspend fun clearLists()
@@ -39,6 +42,7 @@ interface EntityDao {
     @Query("DELETE FROM meal_ingredients") suspend fun clearMealIngredients()
     @Query("DELETE FROM plan_entries") suspend fun clearPlanEntries()
     @Query("DELETE FROM list_entries") suspend fun clearListEntries()
+    @Query("DELETE FROM expenses") suspend fun clearExpenses()
 
     @Query("UPDATE contributions SET itemId = :target WHERE itemId = :alias")
     suspend fun remapContributionItems(alias: String, target: String)
@@ -121,6 +125,9 @@ interface QueryDao {
     @Query("SELECT * FROM items") suspend fun itemsNow(): List<ItemRow>
 
     @Query("SELECT * FROM plan_entries WHERE mealId = :mealId") suspend fun planEntriesForMeal(mealId: String): List<PlanEntryRow>
+
+    @Query("SELECT * FROM expenses ORDER BY date DESC, id DESC") fun expenses(): Flow<List<ExpenseRow>>
+    @Query("SELECT currency FROM expenses ORDER BY date DESC, id DESC LIMIT 1") suspend fun lastCurrency(): String?
 
     @Query("SELECT * FROM members ORDER BY joinedAtMs") fun members(): Flow<List<MemberRow>>
     @Query("SELECT COUNT(*) FROM members") suspend fun memberCount(): Int

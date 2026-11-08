@@ -17,6 +17,9 @@ import dev.tasky.android.data.TaskyRepository
 import dev.tasky.android.data.db.TaskyDatabase
 import dev.tasky.android.sync.Hlc
 import dev.tasky.android.sync.LocalStore
+import dev.tasky.android.data.db.MemberRow
+import dev.tasky.android.ui.expenses.ExpensesScreen
+import dev.tasky.android.ui.expenses.ExpensesViewModel
 import dev.tasky.android.ui.list.ShoppingListScreen
 import dev.tasky.android.ui.list.ShoppingListViewModel
 import dev.tasky.android.ui.meals.MealEditScreen
@@ -73,6 +76,7 @@ class DarkModeTest {
             repo.setNoteBody(noteId, "Paint the hallway\nFix the bike\nBirthday gift for Ben")
             val meal = repo.createMeal("Curry", 4, "Spicy", null)
             repo.addIngredient(meal, "Rice", 400.0, "g", null)
+            seedExpenses(db, repo)
             repo.createPlanEntry(
                 TaskyRepository.PlanEntryInput(java.time.LocalDate.now().toString(), dev.tasky.api.MealSlot.Dinner, null, meal, null, servings = 2, note = null),
             )
@@ -132,6 +136,13 @@ class DarkModeTest {
     }
 
     @Test
+    fun expenses() {
+        val vm = ExpensesViewModel(repo, SessionStore(ApplicationProvider.getApplicationContext(), PlainBox))
+        compose.setContent { TaskyTheme { ExpensesScreen(vm) } }
+        shoot("expenses", "Weekly shop")
+    }
+
+    @Test
     fun checklist() {
         val vm = ShoppingListViewModel(repo)
         vm.select(checklistId)
@@ -146,4 +157,18 @@ class DarkModeTest {
         compose.setContent { TaskyTheme { ShoppingListScreen(vm) } }
         shoot("note", "Fix the bike")
     }
+}
+
+/** Two members, a few shared expenses and a repayment. */
+internal suspend fun seedExpenses(db: TaskyDatabase, repo: TaskyRepository) {
+    db.queries().upsertMembers(
+        listOf(MemberRow("anna", "anna", "Anna", "owner", 1), MemberRow("ben", "ben", "Ben", "member", 2)),
+    )
+    val month = java.time.LocalDate.now().withDayOfMonth(1)
+    fun input(what: String, minor: Long, payer: String, split: List<String>, category: String?, day: Long) =
+        TaskyRepository.ExpenseInput(what, minor, "EUR", month.plusDays(day).toString(), payer, split, category)
+    repo.createExpense(input("Rent", 120_000, "anna", listOf("anna", "ben"), "Home", 0))
+    repo.createExpense(input("Weekly shop", 4_250, "ben", listOf("anna", "ben"), "Groceries", 1))
+    repo.createExpense(input("Concert tickets", 5_900, "anna", listOf("ben"), null, 2))
+    repo.recordSettlement("ben", "anna", 30_000, "EUR", month.plusDays(3).toString())
 }

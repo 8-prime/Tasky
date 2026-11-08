@@ -1,9 +1,10 @@
 # Tasky
 
-Weekly meal planning and shared shopping lists for a household. A self-hosted Rust server and an Android app.
+Weekly meal planning, shared shopping lists and a shared expense book for a household. A self-hosted Rust server and an Android app.
 
 - Plan breakfast, lunch and dinner per person or for the whole household.
 - Keep a catalog of known meals with ingredients (amount + unit).
+- Track household expenses: who paid, who shares the cost, and who owes whom.
 - Add planned meals to the shared shopping list. Amounts of the same item add up across meals.
 - Several people can edit the list at once without losing anything: entities are identified by ID and merged field by field, never by position.
 

@@ -43,6 +43,32 @@ class MigrationTest {
         db.close()
     }
 
+    @Test
+    fun v2ToV3AddsExpensesAndKeepsTheOutbox() {
+        helper.createDatabase(DB, 2).apply {
+            execSQL("INSERT INTO lists (id, name, kind) VALUES ('l1', 'Groceries', 'grocery')")
+            execSQL("INSERT INTO outbox (entityId, op, inFlight) VALUES ('e1', '{\"pending\":true}', 0)")
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(DB, 3, true)
+
+        db.query("SELECT COUNT(*) FROM lists").use { c ->
+            c.moveToFirst()
+            assertEquals(1, c.getInt(0))
+        }
+        db.query("SELECT entityId FROM outbox").use { c ->
+            assertEquals(1, c.count)
+            c.moveToFirst()
+            assertEquals("e1", c.getString(0))
+        }
+        db.execSQL(
+            "INSERT INTO expenses (id, description, amountMinor, currency, date, paidBy, splitAmong, kind) " +
+                "VALUES ('x', 'Rent', 100000, 'EUR', '2026-11-01', 'a', 'a,b', 'expense')",
+        )
+        db.close()
+    }
+
     private companion object {
         const val DB = "migration-test.db"
     }
