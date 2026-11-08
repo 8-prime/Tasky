@@ -91,6 +91,9 @@ sealed class EntityData {
 	@Serializable
 	@SerialName("list_entry")
 	data class ListEntry(val value: ListEntryData): EntityData()
+	@Serializable
+	@SerialName("expense")
+	data class Expense(val value: ExpenseData): EntityData()
 }
 
 /// Current state of a synced entity.
@@ -134,6 +137,44 @@ enum class ErrorCode(val string: String) {
 data class ErrorBody (
 	val error: ErrorCode,
 	val message: String
+)
+
+/// What an expense record is. Set on create; can't be changed later.
+@Serializable
+enum class ExpenseKind(val string: String) {
+	/// Money spent for the household (or some of its members).
+	@SerialName("expense")
+	Expense("expense"),
+	/// A repayment between two members: `paid_by` paid `split_among[0]` back.
+	@SerialName("settlement")
+	Settlement("settlement"),
+}
+
+/// One entry in the household's expense book.
+/// 
+/// Balances follow from the entries alone: `paid_by` is credited `amount_minor`, and each
+/// member of `split_among` is debited an equal share (see docs/API.md for the exact rounding).
+/// A settlement uses the same rule, which is why it moves debt back.
+@Serializable
+data class ExpenseData (
+	/// What it was for, e.g. "Rent" or "Weekly shop".
+	val description: String,
+	/// Total paid, in minor units of `currency` (cents for EUR). Greater than zero.
+	val amount_minor: Long,
+	/// ISO 4217 code, uppercase, e.g. "EUR". Balances are kept per currency.
+	val currency: String,
+	/// Calendar date `YYYY-MM-DD` of the purchase.
+	val date: String,
+	/// The member who paid.
+	val paid_by: String,
+	/// Members who share the cost equally. Not empty, no duplicates. "The whole household" is
+	/// stored as the list of members at the time, so people who join later don't owe old bills.
+	val split_among: List<String>,
+	/// Free text for grouping, e.g. "Groceries" or "Utilities".
+	val category: String? = null,
+	val note: String? = null,
+	/// Missing or null means `expense`.
+	val kind: ExpenseKind? = null
 )
 
 @Serializable
@@ -321,6 +362,9 @@ sealed class OpAction {
 	@Serializable
 	@SerialName("set_list_entry")
 	data class SetListEntry(val value: ListEntryField): OpAction()
+	@Serializable
+	@SerialName("set_expense")
+	data class SetExpense(val value: ExpenseField): OpAction()
 }
 
 /// A single change made by a client. Applying an op twice has no extra effect,
@@ -495,6 +539,36 @@ enum class EntityKind(val string: String) {
 	PlanEntry("plan_entry"),
 	@SerialName("list_entry")
 	ListEntry("list_entry"),
+	@SerialName("expense")
+	Expense("expense"),
+}
+
+@Serializable
+sealed class ExpenseField {
+	@Serializable
+	@SerialName("description")
+	data class Description(val value: String): ExpenseField()
+	@Serializable
+	@SerialName("amount_minor")
+	data class AmountMinor(val value: Long): ExpenseField()
+	@Serializable
+	@SerialName("currency")
+	data class Currency(val value: String): ExpenseField()
+	@Serializable
+	@SerialName("date")
+	data class Date(val value: String): ExpenseField()
+	@Serializable
+	@SerialName("paid_by")
+	data class PaidBy(val value: String): ExpenseField()
+	@Serializable
+	@SerialName("split_among")
+	data class SplitAmong(val value: List<String>): ExpenseField()
+	@Serializable
+	@SerialName("category")
+	data class Category(val value: String?): ExpenseField()
+	@Serializable
+	@SerialName("note")
+	data class Note(val value: String?): ExpenseField()
 }
 
 @Serializable

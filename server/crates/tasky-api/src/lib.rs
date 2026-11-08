@@ -18,6 +18,8 @@ use uuid::Uuid;
 pub type Millis = i64;
 /// Monotonic per-household change sequence number. (Mapped to `Long` in Kotlin.)
 pub type Seq = i64;
+/// Money in the currency's minor unit, e.g. cents for EUR. (Mapped to `Long` in Kotlin.)
+pub type MinorUnits = i64;
 
 /// Version of the wire protocol. Bumped on breaking changes.
 pub const API_VERSION: i32 = 1;
@@ -219,6 +221,7 @@ pub enum EntityKind {
     MealIngredient,
     PlanEntry,
     ListEntry,
+    Expense,
 }
 
 impl EntityKind {
@@ -231,6 +234,7 @@ impl EntityKind {
             EntityKind::MealIngredient => "meal_ingredient",
             EntityKind::PlanEntry => "plan_entry",
             EntityKind::ListEntry => "list_entry",
+            EntityKind::Expense => "expense",
         }
     }
 
@@ -243,6 +247,7 @@ impl EntityKind {
             "meal_ingredient" => EntityKind::MealIngredient,
             "plan_entry" => EntityKind::PlanEntry,
             "list_entry" => EntityKind::ListEntry,
+            "expense" => EntityKind::Expense,
             _ => return None,
         })
     }
@@ -363,6 +368,45 @@ pub struct PlanEntryData {
     pub note: Option<String>,
 }
 
+/// What an expense record is. Set on create; can't be changed later.
+#[typeshare]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExpenseKind {
+    /// Money spent for the household (or some of its members).
+    Expense,
+    /// A repayment between two members: `paid_by` paid `split_among[0]` back.
+    Settlement,
+}
+
+/// One entry in the household's expense book.
+///
+/// Balances follow from the entries alone: `paid_by` is credited `amount_minor`, and each
+/// member of `split_among` is debited an equal share (see docs/API.md for the exact rounding).
+/// A settlement uses the same rule, which is why it moves debt back.
+#[typeshare]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ExpenseData {
+    /// What it was for, e.g. "Rent" or "Weekly shop".
+    pub description: String,
+    /// Total paid, in minor units of `currency` (cents for EUR). Greater than zero.
+    pub amount_minor: MinorUnits,
+    /// ISO 4217 code, uppercase, e.g. "EUR". Balances are kept per currency.
+    pub currency: String,
+    /// Calendar date `YYYY-MM-DD` of the purchase.
+    pub date: String,
+    /// The member who paid.
+    pub paid_by: Uuid,
+    /// Members who share the cost equally. Not empty, no duplicates. "The whole household" is
+    /// stored as the list of members at the time, so people who join later don't owe old bills.
+    pub split_among: Vec<Uuid>,
+    /// Free text for grouping, e.g. "Groceries" or "Utilities".
+    pub category: Option<String>,
+    pub note: Option<String>,
+    /// Missing or null means `expense`.
+    pub kind: Option<ExpenseKind>,
+}
+
 /// Full data of a synced entity, tagged by kind:
 /// `{"type": "item", "value": {"name": "Milk", ...}}`.
 #[typeshare]
@@ -376,6 +420,7 @@ pub enum EntityData {
     MealIngredient(MealIngredientData),
     PlanEntry(PlanEntryData),
     ListEntry(ListEntryData),
+    Expense(ExpenseData),
 }
 
 impl EntityData {
@@ -388,6 +433,7 @@ impl EntityData {
             EntityData::MealIngredient(_) => EntityKind::MealIngredient,
             EntityData::PlanEntry(_) => EntityKind::PlanEntry,
             EntityData::ListEntry(_) => EntityKind::ListEntry,
+            EntityData::Expense(_) => EntityKind::Expense,
         }
     }
 }
@@ -468,6 +514,20 @@ pub enum PlanEntryField {
     Note(Option<String>),
 }
 
+#[typeshare]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum ExpenseField {
+    Description(String),
+    AmountMinor(MinorUnits),
+    Currency(String),
+    Date(String),
+    PaidBy(Uuid),
+    SplitAmong(Vec<Uuid>),
+    Category(Option<String>),
+    Note(Option<String>),
+}
+
 // ───────────────────────────── Sync protocol ─────────────────────────────
 
 /// What an op does to its entity.
@@ -487,6 +547,7 @@ pub enum OpAction {
     SetMealIngredient(MealIngredientField),
     SetPlanEntry(PlanEntryField),
     SetListEntry(ListEntryField),
+    SetExpense(ExpenseField),
 }
 
 /// A single change made by a client. Applying an op twice has no extra effect,

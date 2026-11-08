@@ -14,8 +14,8 @@ use std::collections::BTreeMap;
 use serde_json::{Map, Value, json};
 use sqlx::SqliteConnection;
 use tasky_api::{
-    ContributionData, Entity, EntityData, EntityKind, ItemAlias, MealIngredientData, Op, OpAction,
-    PlanEntryData, RejectCode, RejectedOp, Seq,
+    ContributionData, Entity, EntityData, EntityKind, ExpenseData, ExpenseKind, ItemAlias,
+    MealIngredientData, Op, OpAction, PlanEntryData, RejectCode, RejectedOp, Seq,
 };
 use uuid::Uuid;
 
@@ -122,6 +122,7 @@ fn action_kind(action: &OpAction) -> EntityKind {
         OpAction::SetMealIngredient(_) => EntityKind::MealIngredient,
         OpAction::SetPlanEntry(_) => EntityKind::PlanEntry,
         OpAction::SetListEntry(_) => EntityKind::ListEntry,
+        OpAction::SetExpense(_) => EntityKind::Expense,
     }
 }
 
@@ -148,6 +149,7 @@ fn field_update(action: &OpAction) -> anyhow::Result<Option<(String, Value)>> {
         OpAction::SetMealIngredient(f) => serde_json::to_value(f)?,
         OpAction::SetPlanEntry(f) => serde_json::to_value(f)?,
         OpAction::SetListEntry(f) => serde_json::to_value(f)?,
+        OpAction::SetExpense(f) => serde_json::to_value(f)?,
     };
     untag(tagged).map(Some)
 }
@@ -381,6 +383,17 @@ fn check_amount(amount: Option<f64>) -> Result<(), OpError> {
     }
 }
 
+/// Largest accepted expense: 10 billion in major units (cents for EUR).
+const MAX_AMOUNT_MINOR: i64 = 1_000_000_000_000;
+const MAX_SPLIT: usize = 100;
+
+fn check_date(date: &str) -> Result<(), OpError> {
+    if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
+        return reject(RejectCode::Validation, "date must be YYYY-MM-DD");
+    }
+    Ok(())
+}
+
 fn check_servings(servings: i32, what: &str) -> Result<(), OpError> {
     if !(1..=1000).contains(&servings) {
         return reject(
@@ -456,9 +469,7 @@ async fn validate(
             note,
             ..
         }) => {
-            if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
-                return reject(RejectCode::Validation, "date must be YYYY-MM-DD");
-            }
+            check_date(date)?;
             check_opt_text(free_text, "free_text", 200)?;
             check_opt_text(note, "note", 1000)?;
             if let Some(s) = servings {
@@ -478,6 +489,53 @@ async fn validate(
                 check_member(conn, ctx, *user).await?;
             }
         }
+        EntityData::Expense(d) => validate_expense(conn, ctx, d).await?,
+    }
+    Ok(())
+}
+
+async fn validate_expense(
+    conn: &mut SqliteConnection,
+    ctx: &Ctx,
+    d: &ExpenseData,
+) -> Result<(), OpError> {
+    check_text(&d.description, "description", 200, true)?;
+    if !(1..=MAX_AMOUNT_MINOR).contains(&d.amount_minor) {
+        return reject(
+            RejectCode::Validation,
+            format!("amount_minor must be between 1 and {MAX_AMOUNT_MINOR}"),
+        );
+    }
+    if d.currency.len() != 3 || !d.currency.bytes().all(|b| b.is_ascii_uppercase()) {
+        return reject(
+            RejectCode::Validation,
+            "currency must be a 3-letter uppercase ISO 4217 code",
+        );
+    }
+    check_date(&d.date)?;
+    check_opt_text(&d.category, "category", 64)?;
+    check_opt_text(&d.note, "note", 1000)?;
+    if d.split_among.is_empty() || d.split_among.len() > MAX_SPLIT {
+        return reject(
+            RejectCode::Validation,
+            format!("split_among must name 1 to {MAX_SPLIT} members"),
+        );
+    }
+    let mut seen = std::collections::HashSet::with_capacity(d.split_among.len());
+    if !d.split_among.iter().all(|u| seen.insert(*u)) {
+        return reject(RejectCode::Validation, "split_among has duplicates");
+    }
+    if d.kind == Some(ExpenseKind::Settlement)
+        && (d.split_among.len() != 1 || d.split_among[0] == d.paid_by)
+    {
+        return reject(
+            RejectCode::Validation,
+            "a settlement is paid to exactly one other member",
+        );
+    }
+    check_member(conn, ctx, d.paid_by).await?;
+    for user in &d.split_among {
+        check_member(conn, ctx, *user).await?;
     }
     Ok(())
 }
@@ -849,6 +907,32 @@ mod tests {
                 OpAction::SetListEntry(ListEntryField::Checked(true)),
                 entry(),
             ),
+            (
+                OpAction::SetExpense(ExpenseField::Description("x".into())),
+                expense(),
+            ),
+            (
+                OpAction::SetExpense(ExpenseField::AmountMinor(1)),
+                expense(),
+            ),
+            (
+                OpAction::SetExpense(ExpenseField::Currency("EUR".into())),
+                expense(),
+            ),
+            (
+                OpAction::SetExpense(ExpenseField::Date("2026-01-01".into())),
+                expense(),
+            ),
+            (OpAction::SetExpense(ExpenseField::PaidBy(id)), expense()),
+            (
+                OpAction::SetExpense(ExpenseField::SplitAmong(vec![id])),
+                expense(),
+            ),
+            (
+                OpAction::SetExpense(ExpenseField::Category(None)),
+                expense(),
+            ),
+            (OpAction::SetExpense(ExpenseField::Note(None)), expense()),
         ];
         for (action, data) in samples {
             let (field, _) = field_update(&action).unwrap().unwrap();
@@ -912,6 +996,19 @@ mod tests {
             amount: None,
             unit: None,
             note: None,
+        })
+    }
+    fn expense() -> EntityData {
+        EntityData::Expense(ExpenseData {
+            description: "e".into(),
+            amount_minor: 100,
+            currency: "EUR".into(),
+            date: "2026-01-01".into(),
+            paid_by: Uuid::nil(),
+            split_among: vec![Uuid::nil()],
+            category: None,
+            note: None,
+            kind: None,
         })
     }
     fn plan() -> EntityData {
