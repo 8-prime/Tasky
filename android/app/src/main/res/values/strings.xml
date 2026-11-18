@@ -235,6 +235,12 @@
     <string name="household_sync_now">Sync now</string>
     <string name="household_logout">Sign out</string>
     <string name="household_logout_title">Sign out?</string>
+    <string name="account_delete">Delete account</string>
+    <string name="account_delete_title">Delete your account?</string>
+    <string name="account_delete_text_last">You are the only member, so the household and everything in it (lists, meals, plans and expenses) are deleted for good. This can’t be undone.</string>
+    <string name="account_delete_text_shared">Your account, your signed-in devices and meals planned only for you are deleted for good. Shared lists, meals and expenses stay with the other members, without your name. This can’t be undone.</string>
+    <string name="account_delete_password">Your password</string>
+    <string name="account_delete_confirm">Delete for good</string>
     <string name="household_logout_text">This device forgets the household data. Sign in again any time to get it back.</string>
     <plurals name="household_logout_pending">
         <item quantity="one">%1$d change hasn’t reached the server yet and will be lost.</item>

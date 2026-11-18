@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -24,6 +25,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -33,6 +35,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +43,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.tasky.android.R
 import dev.tasky.android.ui.components.ConfirmDialog
@@ -47,7 +52,7 @@ import dev.tasky.android.ui.components.TextInputDialog
 import dev.tasky.android.ui.errorMessage
 import dev.tasky.api.InviteResponse
 
-private enum class HouseholdDialog { DisplayName, HouseholdName, Logout }
+private enum class HouseholdDialog { DisplayName, HouseholdName, Logout, DeleteAccount }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -136,6 +141,11 @@ fun HouseholdScreen(vm: HouseholdViewModel) {
                 OutlinedButton(onClick = vm::syncNow, enabled = !busy && !sync.syncing) { Text(stringResource(R.string.household_sync_now)) }
                 OutlinedButton(onClick = { dialog = HouseholdDialog.Logout }, enabled = !busy) { Text(stringResource(R.string.household_logout)) }
             }
+            TextButton(
+                onClick = { vm.dismissDeleteError(); dialog = HouseholdDialog.DeleteAccount },
+                enabled = !busy,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            ) { Text(stringResource(R.string.account_delete), color = MaterialTheme.colorScheme.error) }
         }
     }
 
@@ -161,7 +171,51 @@ fun HouseholdScreen(vm: HouseholdViewModel) {
             confirm = R.string.household_logout,
             onDismiss = { dialog = null },
         ) { vm.logout(); dialog = null }
+        HouseholdDialog.DeleteAccount -> DeleteAccountDialog(
+            lastMember = s.members.size <= 1,
+            busy = busy,
+            error = vm.deleteError.collectAsState().value,
+            onDismiss = { dialog = null },
+            onConfirm = vm::deleteAccount,
+        )
     }
+}
+
+@Composable
+private fun DeleteAccountDialog(
+    lastMember: Boolean,
+    busy: Boolean,
+    error: Throwable?,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var password by rememberSaveable { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text(stringResource(R.string.account_delete_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(if (lastMember) R.string.account_delete_text_last else R.string.account_delete_text_shared))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text(stringResource(R.string.account_delete_password)) },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    isError = error != null,
+                    supportingText = error?.let { { Text(LocalResources.current.errorMessage(it)) } },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(password) }, enabled = !busy && password.isNotEmpty()) {
+                Text(stringResource(R.string.account_delete_confirm), color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.action_cancel)) } },
+    )
 }
 
 @Composable

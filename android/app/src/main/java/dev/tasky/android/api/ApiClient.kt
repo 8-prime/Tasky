@@ -2,6 +2,7 @@ package dev.tasky.android.api
 
 import dev.tasky.api.AuthResponse
 import dev.tasky.api.CreateHouseholdRequest
+import dev.tasky.api.DeleteAccountRequest
 import dev.tasky.api.ErrorBody
 import dev.tasky.api.ErrorCode
 import dev.tasky.api.HouseholdDetails
@@ -64,6 +65,9 @@ class ApiClient(
     suspend fun logout() { send<Unit>("POST", "/auth/logout", "{}", null) }
     suspend fun me(): MeResponse = get("/me")
     suspend fun updateMe(req: UpdateMeRequest): MeResponse = send("PATCH", "/me", req)
+    suspend fun deleteAccount(req: DeleteAccountRequest) {
+        send<Unit>("POST", "/me/delete", TaskyJson.encodeToString(DeleteAccountRequest.serializer(), req), null)
+    }
     suspend fun household(id: String): HouseholdDetails = get("/households/$id")
     suspend fun updateHousehold(id: String, req: UpdateHouseholdRequest): HouseholdDetails =
         send("PATCH", "/households/$id", req)

@@ -6,6 +6,7 @@ import dev.tasky.android.data.db.MemberRow
 import dev.tasky.android.data.db.TaskyDatabase
 import dev.tasky.api.AuthResponse
 import dev.tasky.api.CreateHouseholdRequest
+import dev.tasky.api.DeleteAccountRequest
 import dev.tasky.api.InviteResponse
 import dev.tasky.api.JoinHouseholdRequest
 import dev.tasky.api.LoginRequest
@@ -110,6 +111,12 @@ class AccountRepository(
         val api = sessionApi() ?: throw IOException("Not signed in")
         val details = api.updateHousehold(sessions.current!!.householdId, UpdateHouseholdRequest(name.trim()))
         sessions.update { it.copy(householdName = details.household.name) }
+    }
+
+    /** Deletes the account on the server for good. Local cleanup is up to the caller. */
+    suspend fun deleteAccount(password: String) {
+        val api = sessionApi() ?: throw IOException("Not signed in")
+        api.deleteAccount(DeleteAccountRequest(password))
     }
 
     /** Ends the session on the server (best effort). Local cleanup is up to the caller. */

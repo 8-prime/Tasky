@@ -114,6 +114,12 @@ class AppContainer(private val context: Context) {
         signOutLocally()
     }
 
+    /** Deletes the account on the server (throws if that fails) and wipes local data. */
+    suspend fun deleteAccount(password: String) {
+        account.deleteAccount(password)
+        signOutLocally()
+    }
+
     private suspend fun signOutLocally() {
         if (sessions.current == null) return
         live.stop()
