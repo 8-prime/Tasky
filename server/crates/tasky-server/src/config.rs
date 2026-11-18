@@ -1,10 +1,9 @@
 use std::net::SocketAddr;
 
-use clap::Parser;
+use clap::Args;
 
-/// Tasky server: shared meal planning and shopping lists for households.
-#[derive(Debug, Clone, Parser)]
-#[command(version, about)]
+/// Server settings (command-line flags or `TASKY_*` environment variables).
+#[derive(Debug, Clone, Args)]
 pub struct Config {
     /// Address to listen on.
     #[arg(long, env = "TASKY_BIND", default_value = "0.0.0.0:8080")]
@@ -22,4 +21,9 @@ pub struct Config {
     /// How long invite codes stay valid, in hours.
     #[arg(long, env = "TASKY_INVITE_TTL_HOURS", default_value_t = 48)]
     pub invite_ttl_hours: i64,
+
+    /// How to reach whoever runs this server (e.g. an email address). Shown on the
+    /// `/privacy` and `/delete-account` pages.
+    #[arg(long, env = "TASKY_CONTACT")]
+    pub contact: Option<String>,
 }

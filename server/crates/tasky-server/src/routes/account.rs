@@ -3,7 +3,9 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use tasky_api::{ChangePasswordRequest, MeResponse, Session, UpdateMeRequest, User};
+use tasky_api::{
+    ChangePasswordRequest, DeleteAccountRequest, MeResponse, Session, UpdateMeRequest, User,
+};
 use uuid::Uuid;
 
 use crate::{
@@ -12,6 +14,7 @@ use crate::{
         AuthUser, hash_password, households_of, invalid_credentials, validate_display_name,
         validate_password, verify_password,
     },
+    deletion::delete_user,
     error::{AppError, AppResult},
     util::parse_uuid,
 };
@@ -83,6 +86,21 @@ pub async fn change_password(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /api/v1/me/delete`: deletes the account after checking the password.
+pub async fn delete_account(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(req): Json<DeleteAccountRequest>,
+) -> AppResult<StatusCode> {
+    let (_, hash) = load_user(&state, auth.user_id).await?;
+    if !verify_password(req.password, hash).await? {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        return Err(invalid_credentials());
+    }
+    delete_user(&state, auth.user_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

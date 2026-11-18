@@ -1,6 +1,34 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use tasky_server::Config;
 use tracing_subscriber::EnvFilter;
+
+/// Tasky server: shared meal planning and shopping lists for households.
+#[derive(Parser)]
+#[command(version, about)]
+struct Cli {
+    #[command(flatten)]
+    config: Config,
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Create or reset a demo household with sample data, for app-store reviewers.
+    ///
+    /// Deletes the accounts USERNAME and USERNAME-partner (and their household) if they exist,
+    /// then creates them again. Run it while the server is up or down; run it again to undo
+    /// whatever a reviewer changed.
+    SeedDemo {
+        /// Username of the demo account. Reserved for the demo: an existing account with this
+        /// name is deleted.
+        #[arg(long, default_value = "playreview")]
+        username: String,
+        /// Password of the demo account (at least 8 characters).
+        #[arg(long, env = "TASKY_DEMO_PASSWORD", hide_env_values = true)]
+        password: String,
+    },
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -10,7 +38,14 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let config = Config::parse();
+    let Cli { config, command } = Cli::parse();
+    if let Some(Command::SeedDemo { username, password }) = command {
+        let db = tasky_server::db::Db::open(&config.database).await?;
+        tasky_server::demo::seed_demo(&db, &username, &password).await?;
+        println!("demo account ready: sign in as {username}");
+        return Ok(());
+    }
+
     let bind = config.bind;
     tracing::info!(database = %config.database, "starting tasky {}", env!("CARGO_PKG_VERSION"));
 
