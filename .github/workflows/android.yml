@@ -1,0 +1,157 @@
+name: android
+
+# PRs: lint + unit tests + debug build.
+# Push to main: the same, then a signed AAB to the Google Play internal testing track.
+# Tag android-vX.Y.Z: a signed AAB to the closed testing track ("alpha") and a GitHub Release
+# with a signed APK (for Obtainium / sideloading).
+# Manual run (Actions → android → Run workflow): build and upload to the track you pick.
+#
+# Setup (secrets, Play service account): docs/PLAY_STORE.md.
+
+on:
+  push:
+    branches: [main]
+    tags: ["android-v*"]
+    paths: ["android/**", "api/kotlin/**", ".github/workflows/android.yml"]
+  pull_request:
+    paths: ["android/**", "api/kotlin/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+    inputs:
+      track:
+        description: Google Play track
+        type: choice
+        options: [internal, alpha]
+        default: internal
+
+env:
+  PACKAGE_NAME: dev.eightprime.tasky
+  # versionCode = run number + offset, so it always grows (5 was the last hand-made one).
+  VERSION_CODE_OFFSET: 100
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install Android SDK packages
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;37.0.0" > /dev/null
+      - run: ./gradlew lintDebug testDebugUnitTest assembleDebug
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: android/app/build/reports
+
+  release:
+    needs: check
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: play
+    concurrency:
+      group: android-release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: android
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install Android SDK packages
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;37.0.0" > /dev/null
+
+      - name: Work out version and track
+        id: version
+        run: |
+          code=$(( GITHUB_RUN_NUMBER + VERSION_CODE_OFFSET ))
+          if [[ "$GITHUB_REF" == refs/tags/android-v* ]]; then
+            name="${GITHUB_REF_NAME#android-v}"
+            track=alpha
+          else
+            name="$(sed -n 's/.*getOrElse("\([0-9][^"]*\)").*/\1/p' app/build.gradle.kts | head -1)-${GITHUB_SHA::7}"
+            track="${{ inputs.track || 'internal' }}"
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "track=$track" >> "$GITHUB_OUTPUT"
+          echo "### Tasky $name (versionCode $code) → $track" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up signing
+        run: |
+          if [[ -z "$ANDROID_KEYSTORE_BASE64" ]]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set; see docs/PLAY_STORE.md"
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          cat > "$RUNNER_TEMP/keystore.properties" <<EOF
+          storeFile=$RUNNER_TEMP/release.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+
+      - name: Build signed AAB and APK
+        run: >
+          ./gradlew bundleRelease assembleRelease
+          -PtaskyKeystoreProperties="$RUNNER_TEMP/keystore.properties"
+          -PtaskyVersionCode=${{ steps.version.outputs.code }}
+          -PtaskyVersionName=${{ steps.version.outputs.name }}
+
+      - name: Collect outputs
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          cp app/build/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/out/tasky-${{ steps.version.outputs.name }}.aab"
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/out/tasky-${{ steps.version.outputs.name }}.apk"
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify "$RUNNER_TEMP/out/tasky-${{ steps.version.outputs.name }}.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tasky-${{ steps.version.outputs.name }}
+          path: ${{ runner.temp }}/out/*
+
+      - name: Check Play credentials
+        id: play
+        run: |
+          if [[ -n "$PLAY_SERVICE_ACCOUNT_JSON" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::PLAY_SERVICE_ACCOUNT_JSON is not set, skipping the Google Play upload (the AAB is attached to this run)."
+          fi
+      - name: Upload to Google Play (${{ steps.version.outputs.track }})
+        if: steps.play.outputs.enabled == 'true'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: ${{ env.PACKAGE_NAME }}
+          releaseFiles: ${{ runner.temp }}/out/tasky-${{ steps.version.outputs.name }}.aab
+          releaseName: ${{ steps.version.outputs.name }} (${{ steps.version.outputs.code }})
+          track: ${{ steps.version.outputs.track }}
+          # "draft" until the app has had its first release rolled out in Play Console.
+          status: ${{ vars.PLAY_RELEASE_STATUS || 'completed' }}
+
+      - name: GitHub Release
+        if: startsWith(github.ref, 'refs/tags/android-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/out/tasky-${{ steps.version.outputs.name }}.apk"
+          --title "Tasky for Android ${{ steps.version.outputs.name }}"
+          --generate-notes
