@@ -3,6 +3,9 @@ package dev.tasky.android.ui.onboarding
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.tasky.android.R
+import dev.tasky.android.api.ApiVersions
+import dev.tasky.android.api.Compatibility
+import dev.tasky.android.api.IncompatibleVersionException
 import dev.tasky.android.api.ServerUrl
 import dev.tasky.android.data.AccountRepository
 import dev.tasky.api.ServerInfo
@@ -79,13 +82,12 @@ class OnboardingViewModel(
             val info = account.checkServer(url)
             when {
                 info.name != "tasky" -> _state.update { it.copy(editServer = true, errorRes = R.string.error_not_tasky) }
-                info.api_version != 1 -> _state.update { it.copy(editServer = true, error = UnsupportedApi(info.api_version)) }
+                ApiVersions.evaluate(info) != Compatibility.Ok ->
+                    _state.update { it.copy(editServer = true, error = IncompatibleVersionException(ApiVersions.evaluate(info))) }
                 else -> _state.update { it.copy(serverUrl = url, serverInfo = info, step = then) }
             }
         }
     }
-
-    class UnsupportedApi(val version: Int) : Exception()
 
     fun submit() {
         val s = _state.value

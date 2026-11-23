@@ -1,5 +1,6 @@
 package dev.tasky.android.sync
 
+import dev.tasky.api.CategoryField
 import dev.tasky.api.ContributionField
 import dev.tasky.api.EntityData
 import dev.tasky.api.EntityKind
@@ -12,6 +13,7 @@ import dev.tasky.api.MealIngredientField
 import dev.tasky.api.Op
 import dev.tasky.api.OpAction
 import dev.tasky.api.PlanEntryField
+import dev.tasky.api.StoreField
 
 val EntityData.kind: EntityKind
     get() = when (this) {
@@ -23,6 +25,8 @@ val EntityData.kind: EntityKind
         is EntityData.PlanEntry -> EntityKind.PlanEntry
         is EntityData.ListEntry -> EntityKind.ListEntry
         is EntityData.Expense -> EntityKind.Expense
+        is EntityData.Category -> EntityKind.Category
+        is EntityData.Store -> EntityKind.Store
     }
 
 val OpAction.kind: EntityKind
@@ -37,6 +41,8 @@ val OpAction.kind: EntityKind
         is OpAction.SetPlanEntry -> EntityKind.PlanEntry
         is OpAction.SetListEntry -> EntityKind.ListEntry
         is OpAction.SetExpense -> EntityKind.Expense
+        is OpAction.SetCategory -> EntityKind.Category
+        is OpAction.SetStore -> EntityKind.Store
     }
 
 /** Same rule as the server: lowercase, trimmed, single-spaced. */
@@ -85,6 +91,18 @@ object OpApplier {
                 is ItemField.Name -> cur.value.copy(name = f.value)
                 is ItemField.Category -> cur.value.copy(category = f.value)
                 is ItemField.DefaultUnit -> cur.value.copy(default_unit = f.value)
+                is ItemField.CategoryId -> cur.value.copy(category_id = f.value)
+            },
+        )
+        cur is EntityData.Category && action is OpAction.SetCategory -> EntityData.Category(
+            when (val f = action.value) {
+                is CategoryField.Name -> cur.value.copy(name = f.value)
+            },
+        )
+        cur is EntityData.Store && action is OpAction.SetStore -> EntityData.Store(
+            when (val f = action.value) {
+                is StoreField.Name -> cur.value.copy(name = f.value)
+                is StoreField.CategoryOrder -> cur.value.copy(category_order = f.value)
             },
         )
         cur is EntityData.List && action is OpAction.SetList -> EntityData.List(

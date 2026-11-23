@@ -1,7 +1,11 @@
 package dev.tasky.android.ui
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
@@ -9,21 +13,27 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.RestaurantMenu
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -35,6 +45,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import dev.tasky.android.AppContainer
 import dev.tasky.android.R
+import dev.tasky.android.api.Compatibility
 import dev.tasky.android.ui.expenses.ExpensesScreen
 import dev.tasky.android.ui.expenses.ExpensesViewModel
 import dev.tasky.android.ui.household.HouseholdScreen
@@ -47,6 +58,10 @@ import dev.tasky.android.ui.meals.MealsScreen
 import dev.tasky.android.ui.meals.MealsViewModel
 import dev.tasky.android.ui.plan.PlanScreen
 import dev.tasky.android.ui.plan.PlanViewModel
+import dev.tasky.android.ui.stores.StoreEditScreen
+import dev.tasky.android.ui.stores.StoreEditViewModel
+import dev.tasky.android.ui.stores.StoresScreen
+import dev.tasky.android.ui.stores.StoresViewModel
 import kotlinx.serialization.Serializable
 
 @Serializable object ListRoute
@@ -55,6 +70,8 @@ import kotlinx.serialization.Serializable
 @Serializable object ExpensesRoute
 @Serializable object HouseholdRoute
 @Serializable data class MealEditRoute(val mealId: String? = null)
+@Serializable object StoresRoute
+@Serializable data class StoreEditRoute(val storeId: String)
 
 private data class Tab(val route: Any, val label: Int, val icon: ImageVector)
 
@@ -80,24 +97,29 @@ fun MainScaffold(container: AppContainer) {
         container.syncEngine.rejections.collect { snackbar.showSnackbar(resources.getString(R.string.error_rejected, it.message)) }
     }
 
+    val compatibility by container.versionGate.status.collectAsState()
+
     TabsScaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (onTab) {
-                NavigationBar {
-                    tabs.forEach { tab ->
-                        NavigationBarItem(
-                            selected = destination?.hierarchy?.any { it.hasRoute(tab.route::class) } == true,
-                            onClick = {
-                                nav.navigate(tab.route) {
-                                    popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = { Icon(tab.icon, null) },
-                            label = { Text(stringResource(tab.label)) },
-                        )
+            Column {
+                VersionBanner(compatibility, if (onTab) Modifier else Modifier.navigationBarsPadding())
+                if (onTab) {
+                    NavigationBar {
+                        tabs.forEach { tab ->
+                            NavigationBarItem(
+                                selected = destination?.hierarchy?.any { it.hasRoute(tab.route::class) } == true,
+                                onClick = {
+                                    nav.navigate(tab.route) {
+                                        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
+                                icon = { Icon(tab.icon, null) },
+                                label = { Text(stringResource(tab.label)) },
+                            )
+                        }
                     }
                 }
             }
@@ -109,7 +131,18 @@ fun MainScaffold(container: AppContainer) {
             modifier = contentModifier,
         ) {
             composable<ListRoute> {
-                ShoppingListScreen(viewModel { ShoppingListViewModel(container.repository) })
+                ShoppingListScreen(viewModel { ShoppingListViewModel(container.repository) }) { nav.navigate(StoresRoute) }
+            }
+            composable<StoresRoute> {
+                StoresScreen(
+                    viewModel { StoresViewModel(container.repository) },
+                    onOpenStore = { id -> nav.navigate(StoreEditRoute(id)) },
+                    onClose = { nav.popBackStack() },
+                )
+            }
+            composable<StoreEditRoute> { entry ->
+                val route = entry.toRoute<StoreEditRoute>()
+                StoreEditScreen(viewModel { StoreEditViewModel(container.repository, route.storeId) }) { nav.popBackStack() }
             }
             composable<PlanRoute> {
                 PlanScreen(viewModel { PlanViewModel(container.repository, container.sessions) })
@@ -127,6 +160,30 @@ fun MainScaffold(container: AppContainer) {
             composable<HouseholdRoute> {
                 HouseholdScreen(viewModel { HouseholdViewModel(container) })
             }
+        }
+    }
+}
+
+/**
+ * Tells the user when the app and the server can't work together, and who has to update.
+ * Sync is paused meanwhile; edits stay queued on the phone.
+ */
+@Composable
+internal fun VersionBanner(compatibility: Compatibility, modifier: Modifier = Modifier) {
+    val text = when (compatibility) {
+        Compatibility.AppOutdated -> R.string.banner_app_outdated
+        Compatibility.ServerOutdated -> R.string.banner_server_outdated
+        else -> return
+    }
+    Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = modifier.fillMaxWidth()) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.SystemUpdate, null, tint = MaterialTheme.colorScheme.onErrorContainer)
+            Text(
+                stringResource(text),
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(start = 12.dp),
+            )
         }
     }
 }

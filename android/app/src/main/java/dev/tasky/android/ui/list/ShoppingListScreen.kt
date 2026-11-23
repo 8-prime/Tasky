@@ -12,12 +12,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -30,6 +34,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,12 +59,15 @@ import androidx.compose.ui.unit.dp
 import dev.tasky.android.R
 import dev.tasky.android.data.db.ItemRow
 import dev.tasky.android.data.db.ListEntryRow
+import dev.tasky.android.data.db.StoreRow
+import dev.tasky.android.domain.CategoryIndex
 import dev.tasky.android.domain.ListLine
 import dev.tasky.android.domain.Units
 import dev.tasky.android.sync.normalizeName
 import dev.tasky.android.ui.components.AmountField
 import dev.tasky.android.ui.components.ConfirmDialog
 import dev.tasky.android.ui.components.ItemNameField
+import dev.tasky.android.ui.components.Picker
 import dev.tasky.android.ui.components.TextInputDialog
 import dev.tasky.android.ui.components.TextLine
 import dev.tasky.android.ui.components.UnitField
@@ -70,12 +78,13 @@ private sealed interface ListDialog {
     data object Delete : ListDialog
     data class Line(val line: ListLine) : ListDialog
     data class EditItem(val item: ItemRow) : ListDialog
+    data class Category(val itemId: String, val itemName: String) : ListDialog
     data class Entry(val entry: ListEntryRow) : ListDialog
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ShoppingListScreen(vm: ShoppingListViewModel) {
+fun ShoppingListScreen(vm: ShoppingListViewModel, onManageStores: () -> Unit = {}) {
     val s by vm.state.collectAsState()
     var dialog by remember { mutableStateOf<ListDialog?>(null) }
     var adding by rememberSaveable { mutableStateOf(false) }
@@ -116,6 +125,12 @@ fun ShoppingListScreen(vm: ShoppingListViewModel) {
                                 text = { Text(stringResource(R.string.list_clear_checked)) },
                                 enabled = s.hasChecked,
                                 onClick = { vm.clearChecked(); overflow = false },
+                            )
+                        }
+                        if (s.list?.isGrocery == true) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.store_manage)) },
+                                onClick = { onManageStores(); overflow = false },
                             )
                         }
                         DropdownMenuItem(
@@ -165,9 +180,12 @@ fun ShoppingListScreen(vm: ShoppingListViewModel) {
             }
         } else {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding(), bottom = 96.dp)) {
+                item(key = "store") {
+                    StoreBar(s.store, s.stores, onSelect = vm::selectStore, onManage = onManageStores)
+                }
                 for (group in s.groups) {
-                    item(key = "h-${group.category}") {
-                        SectionHeader(group.category ?: stringResource(R.string.list_uncategorized))
+                    item(key = "h-${group.category?.id}") {
+                        SectionHeader(group.category?.name ?: stringResource(R.string.list_uncategorized))
                     }
                     items(group.lines, key = { it.itemId }) { line ->
                         LineRow(line, s.memberNames, onToggle = { vm.toggle(line) }, onLongPress = { dialog = ListDialog.Line(line) })
@@ -191,7 +209,7 @@ fun ShoppingListScreen(vm: ShoppingListViewModel) {
     if (adding) {
         val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(onDismissRequest = { adding = false }, sheetState = sheet) {
-            AddItemForm(items = s.items, onAdd = vm::add)
+            AddItemForm(items = s.items, categories = s.categories, onAdd = vm::add, onCreateCategory = vm::createCategory)
         }
     }
 
@@ -221,11 +239,54 @@ fun ShoppingListScreen(vm: ShoppingListViewModel) {
             line = d.line,
             onDismiss = { dialog = null },
             onEditItem = { dialog = s.items.firstOrNull { it.id == d.line.itemId }?.let { ListDialog.EditItem(it) } },
+            onCategory = { dialog = ListDialog.Category(d.line.itemId, d.line.name) },
             onRemove = { vm.removeLine(d.line); dialog = null },
         )
-        is ListDialog.EditItem -> EditItemDialog(d.item, onDismiss = { dialog = null }) { name, category, unit ->
-            vm.updateItem(d.item.id, name, category, unit)
+        is ListDialog.EditItem -> EditItemDialog(d.item, s.categories, onDismiss = { dialog = null }) { name, categoryId, unit ->
+            vm.updateItem(d.item.id, name, categoryId, unit)
             dialog = null
+        }
+        is ListDialog.Category -> CategoryPickerDialog(
+            itemName = d.itemName,
+            categories = s.categories.all,
+            selected = s.items.firstOrNull { it.id == d.itemId }?.categoryId?.takeIf { s.categories[it] != null },
+            automatic = s.categories.automatic(d.itemName),
+            onDismiss = { dialog = null },
+            onPick = { vm.setCategory(d.itemId, it); dialog = null },
+            onCreate = { name -> vm.createCategory(name) { id -> vm.setCategory(d.itemId, id) }; dialog = null },
+        )
+    }
+}
+
+/** Which store this phone shops in, which decides the order of the categories. */
+@Composable
+private fun StoreBar(store: StoreRow?, stores: List<StoreRow>, onSelect: (String?) -> Unit, onManage: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box(Modifier.padding(horizontal = 16.dp)) {
+        AssistChip(
+            onClick = { open = true },
+            label = { Text(stringResource(R.string.store_chip, store?.name ?: stringResource(R.string.store_default_order))) },
+            leadingIcon = { Icon(Icons.Filled.Storefront, null, Modifier.size(AssistChipDefaults.IconSize)) },
+            trailingIcon = { Icon(Icons.Filled.ArrowDropDown, stringResource(R.string.store_choose), Modifier.size(AssistChipDefaults.IconSize)) },
+        )
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.store_default_order)) },
+                leadingIcon = { RadioButton(selected = store == null, onClick = null) },
+                onClick = { onSelect(null); open = false },
+            )
+            stores.forEach { st ->
+                DropdownMenuItem(
+                    text = { Text(st.name) },
+                    leadingIcon = { RadioButton(selected = store?.id == st.id, onClick = null) },
+                    onClick = { onSelect(st.id); open = false },
+                )
+            }
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.store_manage)) },
+                onClick = { onManage(); open = false },
+            )
         }
     }
 }
@@ -269,13 +330,23 @@ private fun LineRow(line: ListLine, members: Map<String, String>, onToggle: () -
     )
 }
 
-/** Name (with catalog suggestions), amount, unit, category and note. Stays open for the next item. */
+/**
+ * Name (with catalog suggestions), amount, unit, category and note. Stays open for the next item.
+ * New items get their category automatically unless one is picked.
+ */
 @Composable
-private fun AddItemForm(items: List<ItemRow>, onAdd: (String, Double?, String?, String?, String?) -> Unit) {
+private fun AddItemForm(
+    items: List<ItemRow>,
+    categories: CategoryIndex,
+    onAdd: (String, Double?, String?, String?, String?) -> Unit,
+    onCreateCategory: (String, (String) -> Unit) -> Unit,
+) {
     var name by rememberSaveable { mutableStateOf("") }
     var amount by rememberSaveable { mutableStateOf("") }
     var unit by rememberSaveable { mutableStateOf("") }
-    var category by rememberSaveable { mutableStateOf("") }
+    /** Picked by hand; null means automatic. */
+    var categoryId by rememberSaveable { mutableStateOf<String?>(null) }
+    var picking by rememberSaveable { mutableStateOf(false) }
     var note by rememberSaveable { mutableStateOf("") }
     var added by rememberSaveable { mutableStateOf<String?>(null) }
     val focus = remember { FocusRequester() }
@@ -302,33 +373,59 @@ private fun AddItemForm(items: List<ItemRow>, onAdd: (String, Double?, String?, 
             AmountField(amount, { amount = it }, Modifier.weight(1f), isError = amountError)
             UnitField(unit, { unit = it }, Modifier.weight(1f))
         }
-        if (existing == null) {
-            TextLine(category, { category = it }, R.string.field_category, supporting = stringResource(R.string.list_category_help))
-        } else if (!existing.category.isNullOrBlank()) {
-            Text(stringResource(R.string.list_in_category, existing.category), style = MaterialTheme.typography.bodySmall)
+        if (existing != null) {
+            val c = categories.of(existing)
+            Text(categoryLine(c.category, c.automatic), style = MaterialTheme.typography.bodySmall)
+        } else if (name.isNotBlank()) {
+            val picked = categories[categoryId]
+            TextButton(onClick = { picking = true }) {
+                Text(if (picked != null) categoryLine(picked, false) else categoryLine(categories.automatic(name), true))
+            }
         }
         TextLine(note, { note = it }, R.string.field_note)
         added?.let { Text(stringResource(R.string.list_added, it), color = MaterialTheme.colorScheme.primary) }
         Button(
             enabled = name.isNotBlank() && !amountError,
             onClick = {
-                onAdd(name.trim(), Units.parseAmount(amount), unit.ifBlank { null }, note.ifBlank { null }, category.ifBlank { null })
+                onAdd(name.trim(), Units.parseAmount(amount), unit.ifBlank { null }, note.ifBlank { null }, categoryId.takeIf { existing == null })
                 added = name.trim()
-                name = ""; amount = ""; unit = ""; category = ""; note = ""
+                name = ""; amount = ""; unit = ""; categoryId = null; note = ""
                 runCatching { focus.requestFocus() }
             },
             modifier = Modifier.fillMaxWidth(),
         ) { Text(stringResource(R.string.action_add)) }
     }
+    if (picking) {
+        CategoryPickerDialog(
+            itemName = name.trim(),
+            categories = categories.all,
+            selected = categoryId?.takeIf { categories[it] != null },
+            automatic = categories.automatic(name),
+            onDismiss = { picking = false },
+            onPick = { categoryId = it; picking = false },
+            onCreate = { n -> onCreateCategory(n) { id -> categoryId = id }; picking = false },
+        )
+    }
 }
 
 @Composable
-private fun LineActionsDialog(line: ListLine, onDismiss: () -> Unit, onEditItem: () -> Unit, onRemove: () -> Unit) {
+private fun LineActionsDialog(
+    line: ListLine,
+    onDismiss: () -> Unit,
+    onEditItem: () -> Unit,
+    onCategory: () -> Unit,
+    onRemove: () -> Unit,
+) {
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(line.name) },
         text = {
             Column {
+                AssistChip(
+                    onClick = onCategory,
+                    label = { Text(categoryLine(line.category, line.automaticCategory)) },
+                    trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                )
                 line.contributions.forEach { c ->
                     val amount = Units.formatAmount(c.amount, c.unit)
                     val text = listOfNotNull(amount.ifBlank { null }, c.note).joinToString(" · ")
@@ -353,9 +450,9 @@ private fun LineActionsDialog(line: ListLine, onDismiss: () -> Unit, onEditItem:
 }
 
 @Composable
-private fun EditItemDialog(item: ItemRow, onDismiss: () -> Unit, onSave: (String, String?, String?) -> Unit) {
+private fun EditItemDialog(item: ItemRow, categories: CategoryIndex, onDismiss: () -> Unit, onSave: (String, String?, String?) -> Unit) {
     var name by rememberSaveable { mutableStateOf(item.name) }
-    var category by rememberSaveable { mutableStateOf(item.category.orEmpty()) }
+    var categoryId by rememberSaveable { mutableStateOf(item.categoryId?.takeIf { categories[it] != null }) }
     var unit by rememberSaveable { mutableStateOf(item.defaultUnit.orEmpty()) }
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
@@ -363,12 +460,18 @@ private fun EditItemDialog(item: ItemRow, onDismiss: () -> Unit, onSave: (String
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextLine(name, { name = it }, R.string.field_name, isError = name.isBlank())
-                TextLine(category, { category = it }, R.string.field_category)
+                Picker(
+                    label = R.string.field_category,
+                    options = listOf<Pair<String?, String>>(null to automaticLabel(categories.automatic(name))) +
+                        categories.all.map { it.id to it.name },
+                    selected = categoryId,
+                    onSelect = { categoryId = it },
+                )
                 UnitField(unit, { unit = it })
             }
         },
         confirmButton = {
-            TextButton(enabled = name.isNotBlank(), onClick = { onSave(name, category.ifBlank { null }, unit.ifBlank { null }) }) {
+            TextButton(enabled = name.isNotBlank(), onClick = { onSave(name, categoryId, unit.ifBlank { null }) }) {
                 Text(stringResource(R.string.action_save))
             }
         },

@@ -4,9 +4,12 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import dev.tasky.android.api.ApiClient
 import dev.tasky.android.api.ApiException
+import dev.tasky.android.api.ApiVersions
+import dev.tasky.android.api.Compatibility
 import dev.tasky.android.data.Session
 import dev.tasky.android.data.TaskyRepository
 import dev.tasky.android.data.db.TaskyDatabase
+import dev.tasky.android.domain.CategoryIndex
 import dev.tasky.android.domain.Expenses
 import dev.tasky.android.domain.MealPlanning
 import dev.tasky.android.domain.ShoppingList
@@ -71,8 +74,12 @@ class ServerEndToEndTest {
         val q = db.queries()
 
         suspend fun groceries() = q.lists().first().single { it.name == "Groceries" }
-        suspend fun lines(listId: String) =
-            ShoppingList.lines(q.activeContributionsNow(listId), q.items().first().associateBy { it.id })
+        suspend fun lines(listId: String, storeId: String? = null) = ShoppingList.lines(
+            q.activeContributionsNow(listId),
+            q.items().first().associateBy { it.id },
+            CategoryIndex(q.categoriesNow()),
+            storeId?.let { q.store(it).first() },
+        )
     }
 
     @Before
@@ -93,7 +100,8 @@ class ServerEndToEndTest {
         val anon = ApiClient(http, server)
         val info = anon.serverInfo()
         assertEquals("tasky", info.name)
-        assertEquals(1, info.api_version)
+        assertEquals(ApiVersions.APP, info.api_version)
+        assertEquals(Compatibility.Ok, ApiVersions.evaluate(info))
         val a = anon.createHousehold(
             CreateHouseholdRequest(setupToken, "Test home ${unique()}", "anna_${unique()}", "Anna", "password-a", "test A"),
         )
@@ -171,8 +179,9 @@ class ServerEndToEndTest {
         val listA = a.groceries().id
         assertEquals(listA, b.groceries().id)
 
-        // Both add pasta while offline; B uses a different spelling.
-        a.repo.addToList(listA, "Pasta", 500.0, "g", category = "Dry goods")
+        // Both add pasta while offline; B uses a different spelling. A files it under a new category.
+        val dryGoods = a.repo.createCategory("Dry goods")
+        a.repo.addToList(listA, "Pasta", 500.0, "g", categoryId = dryGoods)
         b.repo.addToList(listA, " pasta ", 0.2, "kg")
         a.engine.sync()
         b.engine.sync() // B's item is merged into A's (alias)
@@ -181,7 +190,8 @@ class ServerEndToEndTest {
         for (d in listOf(a, b)) {
             val line = d.lines(listA).single()
             assertEquals("Pasta", line.name)
-            assertEquals("Dry goods", line.category)
+            assertEquals("Dry goods", line.category?.name)
+            assertFalse(line.automaticCategory)
             assertEquals("700 g", Units.format(line.open))
             assertEquals(1, d.q.items().first().size)
             assertEquals(0, d.db.outbox().count())
@@ -229,7 +239,7 @@ class ServerEndToEndTest {
         val list = a.groceries().id
 
         val meal = a.repo.createMeal("Spaghetti", defaultServings = 2, notes = null, url = "https://example.com/spaghetti")
-        a.repo.addIngredient(meal, "Spaghetti", 250.0, "g", null, category = "Dry goods")
+        a.repo.addIngredient(meal, "Spaghetti", 250.0, "g", null)
         a.repo.addIngredient(meal, "Tomato sauce", 1.0, "can", null)
         val entry = a.repo.createPlanEntry(
             TaskyRepository.PlanEntryInput("2026-11-09", MealSlot.Dinner, ownerUserId = null, mealId = meal, freeText = null, servings = null, note = null),
@@ -318,6 +328,45 @@ class ServerEndToEndTest {
         // The other device is unaffected.
         assertTrue(b.engine.sync())
         assertNotEquals(0L, b.engine.cursor())
+    }
+
+    @Test
+    fun categoriesAndStoreLayoutsSyncBetweenDevices() = runBlocking {
+        val (a, b) = household()
+        syncAll(a, b)
+        // The server creates the built-in categories; the app knows the same keys in the same order.
+        val builtins = a.q.categoriesNow()
+        assertEquals(CategoryIndex.BUILTIN_KEYS, CategoryIndex(builtins).all.map { it.key })
+        val byKey = builtins.associateBy { it.key }
+        val list = a.groceries().id
+
+        a.repo.addToList(list, "Vollmilch", 1.0, "l")
+        a.repo.addToList(list, "Äpfel", 1.0, "kg")
+        val oatMilk = a.repo.addToList(list, "Hafermilch", 1.0, "l")
+        a.repo.setItemCategory(oatMilk, byKey.getValue("drinks").id)
+        val store = a.repo.createStore("Corner shop")
+        a.repo.setStoreOrder(store, listOf(byKey.getValue("drinks").id, byKey.getValue("dairy").id))
+        syncAll(a, b)
+
+        // Without a store: default order (produce first). With the store: its layout first.
+        assertEquals(listOf("Äpfel", "Vollmilch", "Hafermilch"), b.lines(list).map { it.name })
+        val lines = b.lines(list, store)
+        assertEquals(listOf("Hafermilch", "Vollmilch", "Äpfel"), lines.map { it.name })
+        assertEquals(listOf("drinks", "dairy", "produce"), lines.map { it.category?.key })
+        assertEquals(listOf(false, true, true), lines.map { it.automaticCategory })
+
+        // B moves produce to the front; A sees the new layout.
+        b.repo.moveStoreCategory(store, byKey.getValue("produce").id, -2)
+        syncAll(a, b)
+        assertEquals(listOf("Äpfel", "Hafermilch", "Vollmilch"), a.lines(list, store).map { it.name })
+
+        // Deleting a category sends its items back to automatic.
+        b.repo.deleteCategory(byKey.getValue("drinks").id)
+        syncAll(a, b)
+        val oat = a.lines(list, store).single { it.itemId == oatMilk }
+        assertEquals("dairy", oat.category?.key)
+        assertTrue(oat.automaticCategory)
+        assertEquals(0, a.db.outbox().count() + b.db.outbox().count())
     }
 
     @Test

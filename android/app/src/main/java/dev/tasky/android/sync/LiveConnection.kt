@@ -1,7 +1,10 @@
 package dev.tasky.android.sync
 
 import android.util.Log
+import dev.tasky.android.api.ApiVersions
+import dev.tasky.android.api.Compatibility
 import dev.tasky.android.api.TaskyJson
+import dev.tasky.android.api.VersionGate
 import dev.tasky.android.data.Session
 import dev.tasky.api.LiveEvent
 import kotlinx.coroutines.CompletableDeferred
@@ -29,6 +32,8 @@ class LiveConnection(
     private val session: () -> Session?,
     private val onEvent: (LiveEvent) -> Unit,
     private val onUnauthorized: () -> Unit,
+    /** No connection attempts while the server's API version doesn't fit this app. */
+    private val gate: VersionGate? = null,
 ) {
     private var job: Job? = null
     private val _connected = MutableStateFlow(false)
@@ -41,6 +46,11 @@ class LiveConnection(
             var backoffMs = MIN_BACKOFF_MS
             while (isActive) {
                 val s = session() ?: break
+                val status = gate?.status?.value
+                if (status == Compatibility.AppOutdated || status == Compatibility.ServerOutdated) {
+                    delay(MAX_BACKOFF_MS)
+                    continue
+                }
                 when (connectOnce(s)) {
                     End.Unauthorized -> {
                         onUnauthorized()
@@ -70,6 +80,7 @@ class LiveConnection(
         val request = Request.Builder()
             .url("${s.serverUrl}/api/v1/households/${s.householdId}/live")
             .header("Authorization", "Bearer ${s.token}")
+            .header(ApiVersions.REQUEST_HEADER, ApiVersions.APP.toString())
             .build()
         val ws = http.newWebSocket(
             request,
@@ -93,6 +104,7 @@ class LiveConnection(
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     Log.d(TAG, "live socket failed: ${t.message} (${response?.code})")
+                    if (response?.code == 426) gate?.record(Compatibility.AppOutdated)
                     ended.complete(
                         when {
                             response?.code == 401 -> End.Unauthorized

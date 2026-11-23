@@ -1,5 +1,6 @@
 package dev.tasky.android.api
 
+import dev.tasky.api.CategoryData
 import dev.tasky.api.ContributionData
 import dev.tasky.api.ContributionField
 import dev.tasky.api.Entity
@@ -17,6 +18,8 @@ import dev.tasky.api.OpAction
 import dev.tasky.api.PlanEntryData
 import dev.tasky.api.PlanEntryField
 import dev.tasky.api.RejectCode
+import dev.tasky.api.StoreData
+import dev.tasky.api.StoreField
 import dev.tasky.api.SyncRequest
 import dev.tasky.api.SyncResponse
 import kotlinx.serialization.json.Json
@@ -40,20 +43,20 @@ class WireFormatTest {
         val op = Op(
             entity_id = id,
             hlc = "0193a4f1c2d0-0000-7f3a9c01e5b24d88",
-            action = OpAction.Create(EntityData.Item(ItemData(name = "Milk", category = "Dairy"))),
+            action = OpAction.Create(EntityData.Item(ItemData(name = "Milk", category_id = id))),
         )
         // The server writes `"default_unit": null`; we leave the null default out, which it accepts
         // (see optionalFieldsMayBeOmitted below).
         assertEquals(
             json(
                 """{"entity_id":"$id","hlc":"0193a4f1c2d0-0000-7f3a9c01e5b24d88",
-                "action":{"type":"create","value":{"type":"item","value":{"name":"Milk","category":"Dairy"}}}}""",
+                "action":{"type":"create","value":{"type":"item","value":{"name":"Milk","category_id":"$id"}}}}""",
             ),
             encode(op),
         )
         // And the server's form (with explicit null) decodes to the same value.
         val serverForm = """{"entity_id":"$id","hlc":"0193a4f1c2d0-0000-7f3a9c01e5b24d88",
-            "action":{"type":"create","value":{"type":"item","value":{"name":"Milk","category":"Dairy","default_unit":null}}}}"""
+            "action":{"type":"create","value":{"type":"item","value":{"name":"Milk","category":null,"default_unit":null,"category_id":"$id"}}}}"""
         assertEquals(op, TaskyJson.decodeFromString<Op>(serverForm))
     }
 
@@ -80,6 +83,27 @@ class WireFormatTest {
             json("""{"type":"set_contribution","value":{"type":"amount","value":null}}"""),
             encode<OpAction>(OpAction.SetContribution(ContributionField.Amount(null))),
         )
+    }
+
+    @Test
+    fun categoryAndStoreShapes() {
+        assertEquals(
+            json("""{"type":"category","value":{"name":"Dairy & eggs","key":"dairy"}}"""),
+            encode<EntityData>(EntityData.Category(CategoryData(name = "Dairy & eggs", key = "dairy"))),
+        )
+        assertEquals(
+            json("""{"type":"store","value":{"name":"Aldi","category_order":["$id"]}}"""),
+            encode<EntityData>(EntityData.Store(StoreData(name = "Aldi", category_order = listOf(id)))),
+        )
+        assertEquals(
+            json("""{"type":"set_store","value":{"type":"category_order","value":["$id"]}}"""),
+            encode<OpAction>(OpAction.SetStore(StoreField.CategoryOrder(listOf(id)))),
+        )
+        assertEquals(
+            json("""{"type":"set_item","value":{"type":"category_id","value":null}}"""),
+            encode<OpAction>(OpAction.SetItem(ItemField.CategoryId(null))),
+        )
+        assertEquals(json("""{"type":"delete","value":"category"}"""), encode<OpAction>(OpAction.Delete(EntityKind.Category)))
     }
 
     @Test

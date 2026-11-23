@@ -41,9 +41,9 @@ class MealPlanningTest {
             ),
         )
         val items = listOf(
-            ItemRow("pasta", "Pasta", "pasta", null, "g"),
-            ItemRow("tom", "Tomato sauce", "tomato sauce", null, "can"),
-            ItemRow("salt", "Salt", "salt", null, null),
+            ItemRow("pasta", "Pasta", "pasta", "g"),
+            ItemRow("tom", "Tomato sauce", "tomato sauce", "can"),
+            ItemRow("salt", "Salt", "salt", null),
         ).associateBy { it.id }
         val entries = listOf(entry("e1", null, null), entry("e2", "u", 1), entry("e3", null, 2, meal = null))
         val p = MealPlanning.propose(entries, meals, ingredients, items, memberCount = 3)

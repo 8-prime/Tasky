@@ -47,17 +47,20 @@ fun interface SyncApi {
 /**
  * REST client for one server. [token] is sent as a bearer token when present.
  * [onUnauthorized] runs when an authenticated request gets a 401 (session revoked).
+ * [gate] checks the server's API version before the first request and after every response;
+ * requests to a server this app can't work with fail with [IncompatibleVersionException].
  */
 class ApiClient(
     private val http: OkHttpClient,
     baseUrl: String,
     private val token: String? = null,
+    private val gate: VersionGate = VersionGate(),
     private val onUnauthorized: () -> Unit = {},
 ) : SyncApi {
     val serverUrl: String = ServerUrl.normalize(baseUrl)
     private val api = "$serverUrl/api/v1"
 
-    suspend fun serverInfo(): ServerInfo = get("/server-info")
+    suspend fun serverInfo(): ServerInfo = get(SERVER_INFO)
     suspend fun createHousehold(req: CreateHouseholdRequest): AuthResponse = post("/auth/create-household", req)
     suspend fun join(req: JoinHouseholdRequest): AuthResponse = post("/auth/join", req)
     suspend fun login(req: LoginRequest): AuthResponse = post("/auth/login", req)
@@ -86,11 +89,22 @@ class ApiClient(
         withContext(Dispatchers.IO) { execute(method, path, json, out) }
 
     private suspend fun <R> execute(method: String, path: String, json: String?, out: KSerializer<R>?): R {
-        val builder = Request.Builder().url(api + path)
+        val versionCheck = path != SERVER_INFO
+        if (versionCheck) gate.ensureCompatible { execute("GET", SERVER_INFO, null, serializer<ServerInfo>()) }
+        val builder = Request.Builder().url(api + path).header(ApiVersions.REQUEST_HEADER, ApiVersions.APP.toString())
         token?.let { builder.header("Authorization", "Bearer $it") }
         builder.method(method, json?.toRequestBody(JSON))
         http.newCall(builder.build()).await().use { response ->
             val text = response.body.string()
+            // Proxies' own error pages have no version headers: only real server answers count.
+            response.header(ApiVersions.SERVER_HEADER)?.toIntOrNull()?.let { serverApi ->
+                gate.record(ApiVersions.evaluate(serverApi, response.header(ApiVersions.MIN_CLIENT_HEADER)?.toIntOrNull()))
+            }
+            if (response.code == 426) {
+                gate.record(Compatibility.AppOutdated)
+                throw IncompatibleVersionException(Compatibility.AppOutdated)
+            }
+            gate.status.value.let { if (versionCheck && it != Compatibility.Ok) throw IncompatibleVersionException(it) }
             if (!response.isSuccessful) {
                 val error = runCatching { TaskyJson.decodeFromString<ErrorBody>(text) }.getOrNull()
                 val ex = ApiException(response.code, error?.error, error?.message ?: "HTTP ${response.code}")
@@ -109,6 +123,7 @@ class ApiClient(
 
     companion object {
         private val JSON = "application/json".toMediaType()
+        private const val SERVER_INFO = "/server-info"
     }
 }
 

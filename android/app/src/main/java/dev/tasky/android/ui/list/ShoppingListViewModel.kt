@@ -6,6 +6,8 @@ import dev.tasky.android.data.TaskyRepository
 import dev.tasky.android.data.db.ItemRow
 import dev.tasky.android.data.db.ListEntryRow
 import dev.tasky.android.data.db.ListRow
+import dev.tasky.android.data.db.StoreRow
+import dev.tasky.android.domain.CategoryIndex
 import dev.tasky.android.domain.CategoryGroup
 import dev.tasky.android.domain.ListLine
 import dev.tasky.android.domain.ShoppingList
@@ -28,6 +30,10 @@ data class ShoppingListState(
     val groups: List<CategoryGroup> = emptyList(),
     val checked: List<ListLine> = emptyList(),
     val items: List<ItemRow> = emptyList(),
+    val categories: CategoryIndex = CategoryIndex(emptyList()),
+    val stores: List<StoreRow> = emptyList(),
+    /** The store this phone shops in; null for the default order. */
+    val store: StoreRow? = null,
     val memberNames: Map<String, String> = emptyMap(),
     /** Checklist entries of the current list: unchecked (oldest first), then checked. */
     val entries: List<ListEntryRow> = emptyList(),
@@ -66,10 +72,18 @@ class ShoppingListViewModel(private val repo: TaskyRepository) : ViewModel() {
 
     private val listsAndCurrent = combine(lists, currentList) { lists, list -> lists to list }
 
+    private data class Layout(val categories: CategoryIndex, val stores: List<StoreRow>, val store: StoreRow?)
+
+    private val layout = combine(q.categories(), q.stores(), repo.selectedStore()) { categories, stores, selected ->
+        Layout(CategoryIndex(categories), stores, stores.firstOrNull { it.id == selected })
+    }
+
+    private val itemsAndMembers = combine(q.items(), q.members()) { items, members -> items to members }
+
     val state: StateFlow<ShoppingListState> = combine(
-        listsAndCurrent, contributions, entries, q.items(), q.members(),
-    ) { (lists, list), contributions, entries, items, members ->
-        val lines = ShoppingList.lines(contributions, items.associateBy { it.id })
+        listsAndCurrent, contributions, entries, itemsAndMembers, layout,
+    ) { (lists, list), contributions, entries, (items, members), layout ->
+        val lines = ShoppingList.lines(contributions, items.associateBy { it.id }, layout.categories, layout.store)
         ShoppingListState(
             loading = false,
             lists = lists,
@@ -77,6 +91,9 @@ class ShoppingListViewModel(private val repo: TaskyRepository) : ViewModel() {
             groups = ShoppingList.groups(lines),
             checked = lines.filter { it.checked },
             items = items,
+            categories = layout.categories,
+            stores = layout.stores,
+            store = layout.store,
             memberNames = members.associate { it.userId to it.displayName },
             entries = entries.filter { !it.checked } + entries.filter { it.checked },
         )
@@ -95,9 +112,10 @@ class ShoppingListViewModel(private val repo: TaskyRepository) : ViewModel() {
         if (line.checked) repo.uncheckLine(listId, line.itemId) else repo.checkLine(listId, line.itemId)
     }
 
-    fun add(itemName: String, amount: Double?, unit: String?, note: String?, category: String?) = launch {
+    /** [categoryId] null means automatic. */
+    fun add(itemName: String, amount: Double?, unit: String?, note: String?, categoryId: String?) = launch {
         val listId = state.value.list?.id ?: return@launch
-        repo.addToList(listId, itemName, amount, unit, note, category)
+        repo.addToList(listId, itemName, amount, unit, note, categoryId)
     }
 
     fun clearChecked() = launch {
@@ -105,8 +123,16 @@ class ShoppingListViewModel(private val repo: TaskyRepository) : ViewModel() {
         if (list.isChecklist) repo.clearCheckedEntries(list.id) else repo.clearChecked(list.id)
     }
     fun removeLine(line: ListLine) = launch { state.value.list?.id?.let { repo.removeLine(it, line.itemId) } }
-    fun updateItem(id: String, name: String, category: String?, defaultUnit: String?) =
-        launch { repo.updateItem(id, name, category, defaultUnit) }
+    fun updateItem(id: String, name: String, categoryId: String?, defaultUnit: String?) =
+        launch { repo.updateItem(id, name, categoryId, defaultUnit) }
+
+    // Categories and stores
+    fun setCategory(itemId: String, categoryId: String?) = launch { repo.setItemCategory(itemId, categoryId) }
+
+    /** Creates a category, then hands its id to [then] (on the main thread). */
+    fun createCategory(name: String, then: (String) -> Unit) = launch { then(repo.createCategory(name)) }
+
+    fun selectStore(storeId: String?) = launch { repo.selectStore(storeId) }
 
     fun createList(name: String, kind: ListKind) = launch { selectedId.value = repo.createList(name, kind) }
 

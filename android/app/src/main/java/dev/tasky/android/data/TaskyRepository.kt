@@ -4,12 +4,16 @@ import dev.tasky.android.data.db.ExpenseRow
 import dev.tasky.android.data.db.MealIngredientRow
 import dev.tasky.android.data.db.MealRow
 import dev.tasky.android.data.db.PlanEntryRow
+import dev.tasky.android.data.db.SyncStateRow
 import dev.tasky.android.data.db.mealSlotOf
+import dev.tasky.android.domain.CategoryIndex
 import dev.tasky.android.domain.ProposedContribution
 import dev.tasky.android.sync.Hlc
 import dev.tasky.android.sync.LocalStore
 import dev.tasky.android.sync.Uuids
 import dev.tasky.android.sync.normalizeName
+import dev.tasky.api.CategoryData
+import dev.tasky.api.CategoryField
 import dev.tasky.api.ContributionData
 import dev.tasky.api.ContributionField
 import dev.tasky.api.EntityData
@@ -33,6 +37,10 @@ import dev.tasky.api.Op
 import dev.tasky.api.OpAction
 import dev.tasky.api.PlanEntryData
 import dev.tasky.api.PlanEntryField
+import dev.tasky.api.StoreData
+import dev.tasky.api.StoreField
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 /**
  * Every user edit goes through here: it becomes ops that update Room optimistically and land
@@ -57,14 +65,14 @@ class TaskyRepository(
 
     /**
      * Finds the catalog item with this name (ignoring case and spaces), or prepares ops creating
-     * it. Fills in an empty category/default unit of an existing item.
+     * it. Fills in an unset category/default unit of an existing item.
      */
-    private suspend fun resolveItem(name: String, category: String?, defaultUnit: String?): Pair<String, List<Op>> {
+    private suspend fun resolveItem(name: String, categoryId: String?, defaultUnit: String?): Pair<String, List<Op>> {
         val existing = queries.itemByNormName(normalizeName(name))
         if (existing != null) {
             val ops = buildList {
-                if (existing.category.isNullOrBlank() && !category.isNullOrBlank()) {
-                    add(op(existing.id, OpAction.SetItem(ItemField.Category(category))))
+                if (existing.categoryId == null && categoryId != null) {
+                    add(op(existing.id, OpAction.SetItem(ItemField.CategoryId(categoryId))))
                 }
                 if (existing.defaultUnit.isNullOrBlank() && !defaultUnit.isNullOrBlank()) {
                     add(op(existing.id, OpAction.SetItem(ItemField.DefaultUnit(defaultUnit))))
@@ -73,20 +81,92 @@ class TaskyRepository(
             return existing.id to ops
         }
         val id = Uuids.v7()
-        val data = ItemData(name = name.trim(), category = category.clean(), default_unit = defaultUnit.clean())
+        val data = ItemData(name = name.trim(), default_unit = defaultUnit.clean(), category_id = categoryId)
         return id to listOf(op(id, OpAction.Create(EntityData.Item(data))))
     }
 
-    suspend fun updateItem(id: String, name: String, category: String?, defaultUnit: String?) {
+    /** [categoryId] null means automatic (from the name). */
+    suspend fun updateItem(id: String, name: String, categoryId: String?, defaultUnit: String?) {
         val cur = store.db.entities().item(id) ?: return
         commit(
             buildList {
                 if (name.trim() != cur.name && name.isNotBlank()) add(op(id, OpAction.SetItem(ItemField.Name(name.trim()))))
-                if (category.clean() != cur.category) add(op(id, OpAction.SetItem(ItemField.Category(category.clean()))))
+                if (categoryId != cur.categoryId) add(op(id, OpAction.SetItem(ItemField.CategoryId(categoryId))))
                 if (defaultUnit.clean() != cur.defaultUnit) add(op(id, OpAction.SetItem(ItemField.DefaultUnit(defaultUnit.clean()))))
             },
         )
     }
+
+    /** Puts an item in a category by hand, or back to automatic with null. */
+    suspend fun setItemCategory(id: String, categoryId: String?) {
+        val cur = store.db.entities().item(id) ?: return
+        if (categoryId != cur.categoryId) commit(listOf(op(id, OpAction.SetItem(ItemField.CategoryId(categoryId)))))
+    }
+
+    // ---------- categories ----------
+
+    suspend fun createCategory(name: String): String {
+        val id = Uuids.v7()
+        commit(listOf(op(id, OpAction.Create(EntityData.Category(CategoryData(name = name.trim().take(64), key = null))))))
+        return id
+    }
+
+    suspend fun renameCategory(id: String, name: String) =
+        commit(listOf(op(id, OpAction.SetCategory(CategoryField.Name(name.trim().take(64))))))
+
+    /**
+     * Deletes a category. Items that were put in it by hand go back to automatic. Store layouts
+     * may keep its id; it's skipped when shown and dropped the next time the layout is edited.
+     */
+    suspend fun deleteCategory(id: String) = commit(
+        queries.itemsInCategory(id).map { op(it.id, OpAction.SetItem(ItemField.CategoryId(null))) } +
+            op(id, OpAction.Delete(EntityKind.Category)),
+    )
+
+    // ---------- stores ----------
+
+    /** A new store starts with the default category order (an empty layout). */
+    suspend fun createStore(name: String): String {
+        val id = Uuids.v7()
+        commit(listOf(op(id, OpAction.Create(EntityData.Store(StoreData(name = name.trim(), category_order = emptyList()))))))
+        return id
+    }
+
+    suspend fun renameStore(id: String, name: String) =
+        commit(listOf(op(id, OpAction.SetStore(StoreField.Name(name.trim())))))
+
+    /** Replaces the store's whole category order. */
+    suspend fun setStoreOrder(id: String, categoryIds: List<String>) {
+        val cur = store.db.entities().store(id) ?: return
+        val order = categoryIds.distinct()
+        if (order != cur.order) commit(listOf(op(id, OpAction.SetStore(StoreField.CategoryOrder(order)))))
+    }
+
+    /**
+     * Moves a category [by] places in the store's layout, based on what's stored right now. Saves
+     * the whole order, so categories that were only there by default become part of the layout.
+     */
+    suspend fun moveStoreCategory(storeId: String, categoryId: String, by: Int) {
+        val cur = store.db.entities().store(storeId) ?: return
+        val order = CategoryIndex(queries.categoriesNow()).ordered(cur).map { it.id }.toMutableList()
+        val from = order.indexOf(categoryId)
+        val to = from + by
+        if (from < 0 || to !in order.indices) return
+        order.add(to, order.removeAt(from))
+        setStoreOrder(storeId, order)
+    }
+
+    suspend fun deleteStore(id: String) {
+        commit(listOf(op(id, OpAction.Delete(EntityKind.Store))))
+        if (selectedStoreNow() == id) selectStore(null)
+    }
+
+    /** The store this phone is shopping in. Kept on the device only: people may shop in different stores. */
+    fun selectedStore(): Flow<String?> = store.db.entities().observeState(KEY_SELECTED_STORE).map { it?.ifEmpty { null } }
+
+    private suspend fun selectedStoreNow(): String? = store.db.entities().state(KEY_SELECTED_STORE)?.ifEmpty { null }
+
+    suspend fun selectStore(id: String?) = store.db.entities().setState(SyncStateRow(KEY_SELECTED_STORE, id.orEmpty()))
 
     // ---------- lists ----------
 
@@ -143,9 +223,9 @@ class TaskyRepository(
         amount: Double?,
         unit: String?,
         note: String? = null,
-        category: String? = null,
+        categoryId: String? = null,
     ): String {
-        val (itemId, itemOps) = resolveItem(itemName, category, unit)
+        val (itemId, itemOps) = resolveItem(itemName, categoryId, unit)
         val contribution = ContributionData(
             list_id = listId, item_id = itemId, amount = amount, unit = unit.clean(),
             note = note.clean(), purchased = false, archived = false,
@@ -211,8 +291,8 @@ class TaskyRepository(
         commit(ops)
     }
 
-    suspend fun addIngredient(mealId: String, itemName: String, amount: Double?, unit: String?, note: String?, category: String? = null) {
-        val (itemId, itemOps) = resolveItem(itemName, category, unit)
+    suspend fun addIngredient(mealId: String, itemName: String, amount: Double?, unit: String?, note: String?) {
+        val (itemId, itemOps) = resolveItem(itemName, null, unit)
         val data = MealIngredientData(meal_id = mealId, item_id = itemId, amount = amount, unit = unit.clean(), note = note.clean())
         commit(itemOps + op(Uuids.v7(), OpAction.Create(EntityData.MealIngredient(data))))
     }
@@ -351,5 +431,7 @@ class TaskyRepository(
 
 /** Stored on settlements, which the app labels from payer and recipient instead. */
 private const val SETTLEMENT_DESCRIPTION = "Settle up"
+
+private const val KEY_SELECTED_STORE = "selected_store"
 
 private fun String?.clean(): String? = this?.trim()?.takeIf { it.isNotEmpty() }
