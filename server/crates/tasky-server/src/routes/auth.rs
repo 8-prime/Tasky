@@ -15,6 +15,7 @@ use crate::{
         validate_display_name, validate_name, validate_password, validate_username,
         verify_password,
     },
+    categories,
     error::{AppError, AppResult},
     invite::hash_invite_code,
     sync::{Ctx, apply_ops, current_seq},
@@ -104,10 +105,13 @@ pub async fn create_household(
         let mut tx = state.db.write.begin().await?;
         let user = insert_user(&mut tx, &username, &display_name, &password_hash).await?;
         let household_id = Uuid::now_v7();
-        sqlx::query("INSERT INTO households (id, name, seq, created_at) VALUES (?, ?, 0, ?)")
-            .bind(household_id.to_string())
-            .bind(&household_name)
-            .bind(now_ms())
+        sqlx::query(
+            "INSERT INTO households (id, name, seq, created_at, data_version) VALUES (?, ?, 0, ?, ?)",
+        )
+        .bind(household_id.to_string())
+        .bind(&household_name)
+        .bind(now_ms())
+        .bind(categories::CURRENT_DATA_VERSION)
             .execute(&mut *tx)
             .await?;
         add_member(&mut tx, household_id, user.id, "owner").await?;
@@ -126,9 +130,11 @@ pub async fn create_household(
                 body: None,
             })),
         };
-        let outcome = apply_ops(&mut tx, &ctx, &[default_list]).await?;
+        let mut ops = vec![default_list];
+        ops.extend(categories::builtin_ops(household_id, &server_hlc()));
+        let outcome = apply_ops(&mut tx, &ctx, &ops).await?;
         if !outcome.rejected.is_empty() {
-            return Err(anyhow::anyhow!("default list rejected: {:?}", outcome.rejected).into());
+            return Err(anyhow::anyhow!("default data rejected: {:?}", outcome.rejected).into());
         }
 
         let session_token = create_session(&mut tx, user.id, &req.device_name).await?;

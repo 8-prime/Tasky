@@ -428,7 +428,9 @@ async fn pagination_and_cursor() {
             break;
         }
     }
-    assert_eq!((pages, seen), (3, 8)); // 7 items + default list
+    // 7 items + default list + built-in categories, 3 per page.
+    let total = 8 + BUILTIN_CATEGORIES.len();
+    assert_eq!((pages, seen), (total.div_ceil(3), total));
     let res = s.sync(&anna, since, vec![]).await;
     assert!(res.changes.is_empty() && !res.has_more && !res.full_resync);
 }
@@ -439,7 +441,7 @@ async fn cursor_ahead_of_server_forces_full_resync() {
     let anna = s.create_household("anna").await;
     let res = s.sync(&anna, 9_999, vec![]).await;
     assert!(res.full_resync);
-    assert_eq!(res.changes.len(), 1);
+    assert_eq!(res.changes.len(), 1 + BUILTIN_CATEGORIES.len());
 }
 
 /// Last-writer-wins must give the same result no matter the order ops arrive in.

@@ -104,11 +104,16 @@ async fn fixed_setup_token_is_reusable() {
 }
 
 #[tokio::test]
-async fn new_household_has_a_default_list() {
+async fn new_household_has_a_default_list_and_categories() {
     let s = TestServer::start().await;
     let anna = s.create_household("anna").await;
     let snapshot = s.snapshot(&anna).await;
-    assert_eq!(snapshot.len(), 1);
+    let categories = snapshot
+        .iter()
+        .filter(|e| e.data.kind() == EntityKind::Category)
+        .count();
+    assert_eq!(categories, BUILTIN_CATEGORIES.len());
+    assert_eq!(snapshot.len(), 1 + categories);
     default_list(&snapshot);
 }
 

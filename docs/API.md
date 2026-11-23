@@ -7,6 +7,7 @@ Kotlin models generated from them are in [`api/kotlin/TaskyApi.kt`](../api/kotli
 ## Conventions
 
 - Base path: `https://<host>/api/v1`. JSON request and response bodies, with `snake_case` keys.
+- **Version:** send `X-Tasky-Api-Version: <API version the app speaks>` with every request (see "Versions").
 - **Auth:** send `Authorization: Bearer <session_token>`. Tokens never expire on their own. They end on logout, when the session is revoked, or when the password changes (which signs out every other session).
 - **IDs** are UUID strings. Clients create the IDs of synced entities themselves (UUIDv7 recommended).
 - **Timestamps** are Unix epoch milliseconds (`*_ms`, type `Long`).
@@ -23,14 +24,39 @@ Kotlin models generated from them are in [`api/kotlin/TaskyApi.kt`](../api/kotli
 | 403 | `invalid_invite` | Invite code unknown, used or expired |
 | 404 | `not_found` | Includes households you're not a member of |
 | 409 | `username_taken` | |
+| 426 | `client_outdated` | The app's API version is older than the server accepts: the app must be updated |
 | 500 | `internal` | |
+
+## Versions
+
+The wire protocol has an integer API version (`API_VERSION` in `tasky-api`, `ApiVersions.APP` in the app). It goes up
+whenever older apps can't work with the server any more, e.g. when a new entity kind appears that they can't decode.
+
+| API version | Change |
+|---|---|
+| 1 | First release. |
+| 2 | Categories and stores; version headers and `client_outdated`. |
+
+- **App → server:** every request carries `X-Tasky-Api-Version`. A missing header counts as version 1.
+  Requests below the server's `MIN_CLIENT_API_VERSION` get `426 client_outdated` (except `GET /server-info`),
+  so an old app learns it must update instead of failing to read data.
+- **Server → app:** every `/api/v1` response carries `X-Tasky-Server-Api-Version` and
+  `X-Tasky-Min-Client-Api-Version`; `ServerInfo` has the same as `api_version` and `min_client_api_version`
+  (missing on servers before version 2, which means 1).
+- **The app** checks `GET /server-info` before its first other request and re-evaluates the headers on every
+  response. If the server needs a newer app, or the server is older than the app's `ApiVersions.MIN_SERVER`,
+  it stops syncing (edits stay in the outbox, so nothing is sent to a server that might reject it), shows a banner
+  saying who has to update, and resumes on its own once versions fit. Responses without the headers (e.g. a
+  proxy's error page) don't change the verdict.
+- **Releasing a breaking change:** bump `API_VERSION` (and usually `MIN_CLIENT_API_VERSION`) in `tasky-api`,
+  and `ApiVersions.APP` / `MIN_SERVER` in the app. Additive changes old apps can live with don't need a bump.
 
 ## Endpoints
 
 | Method & path | Auth | Request → Response |
 |---|---|---|
 | `GET /healthz` (no `/api/v1` prefix) | – | `ok` |
-| `GET /server-info` | – | → `ServerInfo` (use to validate a server URL) |
+| `GET /server-info` | – | → `ServerInfo` (use to validate a server URL and check versions; works without the version header) |
 | `POST /auth/create-household` | – | `CreateHouseholdRequest` → `AuthResponse` |
 | `POST /auth/join` | – | `JoinHouseholdRequest` → `AuthResponse` |
 | `POST /auth/login` | – | `LoginRequest` → `AuthResponse` |
@@ -66,7 +92,9 @@ Rules:
 
 | Kind | Fields | Notes |
 |---|---|---|
-| `item` | `name`, `category?`, `default_unit?` | Household catalog of groceries. Names are unique ignoring case and whitespace (see aliases). |
+| `item` | `name`, `category_id?`, `default_unit?`, `category?` (legacy) | Household catalog of groceries. Names are unique ignoring case and whitespace (see aliases). `category_id` is a category picked by hand; null means automatic (see "Categories"). `category` is the old free-text category: the server converted it once, and clients ignore it. |
+| `category` | `name`, `key?` | A section of a shop. Every household starts with the built-in categories; `key` names which one (`dairy`), null for categories people added. The key is set on create and can't be changed. |
+| `store` | `name`, `category_order` | A shop and the order its categories are laid out in (category IDs, walking order). |
 | `list` | `name`, `kind?` (`grocery`/`checklist`/`note`), `body?` | Every new household gets a "Groceries" grocery list. A missing `kind` means `grocery`. The kind is set on create and can't be changed. `body` is the text of a `note`. |
 | `list_entry` | `list_id`, `text`, `checked`, `checked_by?` | One line of a `checklist` list. `checked_by` is set by the server. |
 | `contribution` | `list_id`, `item_id`, `amount?`, `unit?`, `plan_entry_id?`, `note?`, `purchased`, `purchased_by?`, `archived` | One reason an item is on a list. |
@@ -78,7 +106,8 @@ Rules:
 Validation limits:
 - **Names:** 1–200 characters, and not blank.
 - **Checklist entry text:** 1–1000 characters, and not blank. **Note body:** ≤100000 characters.
-- **Category:** ≤64 characters.
+- **Category:** ≤64 characters (the legacy item `category` and expense `category`). **Category name:** 1–64 characters, not blank; `key` ≤32 characters.
+- **Store:** `name` 1–200 characters, not blank; `category_order` ≤500 category IDs without duplicates.
 - **Unit:** ≤32 characters.
 - **Notes:** ≤1000 characters (meal notes ≤10000).
 - **URL:** ≤2000 characters.
@@ -103,8 +132,38 @@ A **list line** is `(list_id, item_id)`. Its contributions are all `contribution
 - **Uncheck a line:** send `purchased = false` for the line's purchased (non-archived) contributions.
 - **Clear checked:** send `archived = true` for all purchased contributions of the list.
 - **Already have it at home:** the user just checks the line off. There's no pantry tracking.
-- **Sort:** by item `category`, then by name. There's no manual ordering in v1.
+- **Sort:** by category in the order of the chosen store (see "Categories"), then by name. Lines with no category ("Other") come last.
 - **Show who checked:** `purchased_by` (set by the server).
+
+### Categories and store layouts (computed on the client)
+
+- **Built-in categories.** The server creates these in every household, with IDs
+  `uuidv5(CATEGORY_NAMESPACE, "<household_id>:<key>")`, `CATEGORY_NAMESPACE = 3b9e51c7-04d2-4e8a-b6f1-92c47d0ae5f3`.
+  The list and default order is `BUILTIN_CATEGORIES` in `tasky-api`:
+  `produce`, `bakery`, `meat_fish`, `dairy`, `chilled`, `breakfast`, `coffee_tea`, `pasta_rice`, `baking`, `canned`,
+  `condiments`, `international`, `snacks`, `drinks`, `frozen`, `household`, `personal_care`, `baby`, `pets`.
+  Members can rename or delete them and add their own (`key = null`).
+- **An item's category:**
+  1. `category_id`, if set and the category still exists: someone picked it by hand. Since item names are unique
+     in the household, the choice applies everywhere the item is used.
+  2. Otherwise automatic: the client guesses a built-in key from the name and uses the live category with that
+     key. The Android app's rules are in `domain/Categorizer.kt` (English and German keywords; the last word of
+     a name decides, and German compounds match by their ending, so "Hafermilch" is `dairy`).
+     Different app versions may guess differently; a manual choice always wins.
+  3. Otherwise "Other".
+  Set `category_id` back to `null` to return an item to automatic.
+- **Default order** (no store chosen): built-in categories in the order above, then the household's own
+  categories by name, then "Other".
+- **Store order:** the store's `category_order` first, skipping IDs of deleted categories, then every category
+  it doesn't list, in the default order, then "Other". `category_order` is replaced as a whole when edited
+  (`set_store / category_order`), so the last edit wins. An empty order means the default order.
+- **Which store** a phone is shopping in is a device setting, not synced: two people can shop in different stores
+  from the same list.
+- **Deleting a category:** also set `category_id = null` on items that use it. Store layouts may keep its ID.
+- **Compatibility:** apps from before categories can't decode `category` and `store` entities, so this is API
+  version 2 and the server refuses older apps (see "Versions"). When a server from before categories is upgraded, it adds the built-in categories to
+  every household once at startup and turns each item's free-text `category` into a `category_id` (a built-in
+  category if the text means one, like "Produce" or "Getränke", otherwise a new category with that name).
 
 ### Checklists and notes
 
@@ -160,7 +219,7 @@ An op changes one entity:
 {
   "entity_id": "0193a4f1-c2d0-7000-8000-000000000001",
   "hlc": "0193a4f1c2d0-0000-7f3a9c01e5b24d88",
-  "action": {"type": "create", "value": {"type": "item", "value": {"name": "Milk", "category": "Dairy", "default_unit": "l"}}}
+  "action": {"type": "create", "value": {"type": "item", "value": {"name": "Milk", "category_id": null, "default_unit": "l"}}}
 }
 ```
 
@@ -168,13 +227,15 @@ An op changes one entity:
 |---|---|---|
 | `create` | `EntityData` (`{"type": kind, "value": {...all fields}}`) | Creates the entity. If it exists, each field is set by LWW. Brings back a deleted entity if the create is newer than the delete. |
 | `delete` | kind, e.g. `"contribution"` | Tombstones the entity, if newer than its last create/delete. |
-| `set_item` | `{"type": "name" \| "category" \| "default_unit", "value": …}` | Sets one field (LWW). |
+| `set_item` | `{"type": "name" \| "category_id" \| "default_unit" \| "category", "value": …}` | Sets one field (LWW). `category` is legacy. |
 | `set_list` | `name`, `body` | |
 | `set_list_entry` | `list_id`, `text`, `checked` | `checked_by` is set by the server. |
 | `set_contribution` | `list_id`, `amount`, `unit`, `note`, `purchased`, `archived` | `purchased_by` is set by the server. |
 | `set_meal` | `name`, `default_servings`, `notes`, `url` | |
 | `set_meal_ingredient` | `item_id`, `amount`, `unit`, `note` | |
 | `set_plan_entry` | `date`, `slot`, `owner_user_id`, `meal_id`, `free_text`, `servings`, `note` | |
+| `set_category` | `name` | The `key` can't be changed. |
+| `set_store` | `name`, `category_order` | `category_order` is replaced as a whole. |
 | `set_expense` | `description`, `amount_minor`, `currency`, `date`, `paid_by`, `split_among`, `category`, `note` | `split_among` is replaced as a whole. |
 
 To clear an optional field, send `"value": null`.

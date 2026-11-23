@@ -1,6 +1,7 @@
 //! Tasky server library: exposes [`build`] so tests can run the full app in-process.
 
 pub mod auth;
+pub mod categories;
 pub mod config;
 pub mod db;
 pub mod error;
@@ -11,6 +12,7 @@ pub mod routes;
 pub mod setup_token;
 pub mod sync;
 pub mod util;
+pub mod version;
 
 use std::sync::Arc;
 
@@ -33,6 +35,7 @@ pub struct AppState {
 /// Returns the state (for tests) and the sender that triggers shutdown.
 pub async fn build(config: Config) -> anyhow::Result<(Router, AppState, watch::Sender<bool>)> {
     let db = db::Db::open(&config.database).await?;
+    categories::upgrade_households(&db).await?;
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let state = AppState {
         db,

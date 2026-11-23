@@ -52,6 +52,7 @@ fn status_for(code: ErrorCode) -> StatusCode {
         }
         ErrorCode::NotFound => StatusCode::NOT_FOUND,
         ErrorCode::UsernameTaken => StatusCode::CONFLICT,
+        ErrorCode::ClientOutdated => StatusCode::UPGRADE_REQUIRED,
         ErrorCode::Internal => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }

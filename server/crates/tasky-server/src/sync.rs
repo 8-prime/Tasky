@@ -14,8 +14,9 @@ use std::collections::BTreeMap;
 use serde_json::{Map, Value, json};
 use sqlx::SqliteConnection;
 use tasky_api::{
-    ContributionData, Entity, EntityData, EntityKind, ExpenseData, ExpenseKind, ItemAlias,
-    MealIngredientData, Op, OpAction, PlanEntryData, RejectCode, RejectedOp, Seq,
+    CategoryData, ContributionData, Entity, EntityData, EntityKind, ExpenseData, ExpenseKind,
+    ItemAlias, MealIngredientData, Op, OpAction, PlanEntryData, RejectCode, RejectedOp, Seq,
+    StoreData,
 };
 use uuid::Uuid;
 
@@ -123,6 +124,8 @@ fn action_kind(action: &OpAction) -> EntityKind {
         OpAction::SetPlanEntry(_) => EntityKind::PlanEntry,
         OpAction::SetListEntry(_) => EntityKind::ListEntry,
         OpAction::SetExpense(_) => EntityKind::Expense,
+        OpAction::SetCategory(_) => EntityKind::Category,
+        OpAction::SetStore(_) => EntityKind::Store,
     }
 }
 
@@ -150,6 +153,8 @@ fn field_update(action: &OpAction) -> anyhow::Result<Option<(String, Value)>> {
         OpAction::SetPlanEntry(f) => serde_json::to_value(f)?,
         OpAction::SetListEntry(f) => serde_json::to_value(f)?,
         OpAction::SetExpense(f) => serde_json::to_value(f)?,
+        OpAction::SetCategory(f) => serde_json::to_value(f)?,
+        OpAction::SetStore(f) => serde_json::to_value(f)?,
     };
     untag(tagged).map(Some)
 }
@@ -414,7 +419,15 @@ async fn validate(
             check_text(&d.name, "name", 200, true)?;
             check_opt_text(&d.category, "category", 64)?;
             check_opt_text(&d.default_unit, "default_unit", 32)?;
+            if let Some(id) = d.category_id {
+                check_ref(conn, ctx, id, EntityKind::Category).await?;
+            }
         }
+        EntityData::Category(CategoryData { name, key }) => {
+            check_text(name, "name", 64, true)?;
+            check_opt_text(key, "key", 32)?;
+        }
+        EntityData::Store(d) => validate_store(conn, ctx, d).await?,
         EntityData::List(d) => {
             check_text(&d.name, "name", 200, true)?;
             check_opt_text(&d.body, "body", 100_000)?;
@@ -536,6 +549,31 @@ async fn validate_expense(
     check_member(conn, ctx, d.paid_by).await?;
     for user in &d.split_among {
         check_member(conn, ctx, *user).await?;
+    }
+    Ok(())
+}
+
+/// Most categories a store layout may list.
+const MAX_STORE_CATEGORIES: usize = 500;
+
+async fn validate_store(
+    conn: &mut SqliteConnection,
+    ctx: &Ctx,
+    d: &StoreData,
+) -> Result<(), OpError> {
+    check_text(&d.name, "name", 200, true)?;
+    if d.category_order.len() > MAX_STORE_CATEGORIES {
+        return reject(
+            RejectCode::Validation,
+            format!("category_order may list at most {MAX_STORE_CATEGORIES} categories"),
+        );
+    }
+    let mut seen = std::collections::HashSet::with_capacity(d.category_order.len());
+    if !d.category_order.iter().all(|c| seen.insert(*c)) {
+        return reject(RejectCode::Validation, "category_order has duplicates");
+    }
+    for id in &d.category_order {
+        check_ref(conn, ctx, *id, EntityKind::Category).await?;
     }
     Ok(())
 }
@@ -830,6 +868,16 @@ mod tests {
             (OpAction::SetItem(ItemField::Name("x".into())), item()),
             (OpAction::SetItem(ItemField::Category(None)), item()),
             (OpAction::SetItem(ItemField::DefaultUnit(None)), item()),
+            (OpAction::SetItem(ItemField::CategoryId(None)), item()),
+            (
+                OpAction::SetCategory(CategoryField::Name("x".into())),
+                category(),
+            ),
+            (OpAction::SetStore(StoreField::Name("x".into())), store()),
+            (
+                OpAction::SetStore(StoreField::CategoryOrder(vec![id])),
+                store(),
+            ),
             (OpAction::SetList(ListField::Name("x".into())), list()),
             (
                 OpAction::SetContribution(ContributionField::ListId(id)),
@@ -946,6 +994,18 @@ mod tests {
         }
     }
 
+    fn category() -> EntityData {
+        EntityData::Category(CategoryData {
+            name: "c".into(),
+            key: None,
+        })
+    }
+    fn store() -> EntityData {
+        EntityData::Store(StoreData {
+            name: "s".into(),
+            category_order: vec![],
+        })
+    }
     fn list() -> EntityData {
         EntityData::List(ListData {
             name: "l".into(),
@@ -966,6 +1026,7 @@ mod tests {
             name: "i".into(),
             category: None,
             default_unit: None,
+            category_id: None,
         })
     }
     fn contribution() -> EntityData {
