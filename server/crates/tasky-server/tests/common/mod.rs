@@ -36,7 +36,17 @@ impl TestServer {
         TestServer {
             base: format!("http://{addr}"),
             state,
-            http: Client::new(),
+            http: Client::builder()
+                .default_headers(
+                    [(
+                        API_VERSION_HEADER.parse().unwrap(),
+                        API_VERSION.to_string().parse().unwrap(),
+                    )]
+                    .into_iter()
+                    .collect(),
+                )
+                .build()
+                .unwrap(),
             _shutdown: shutdown,
             _dir: dir,
         }
@@ -233,6 +243,7 @@ pub fn item(name: &str) -> OpAction {
         name: name.into(),
         category: None,
         default_unit: None,
+        category_id: None,
     }))
 }
 

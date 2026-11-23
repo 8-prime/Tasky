@@ -1,19 +1,32 @@
 package dev.tasky.android.domain
 
+import dev.tasky.android.data.db.CategoryRow
 import dev.tasky.android.data.db.ContributionRow
 import dev.tasky.android.data.db.ItemRow
+import dev.tasky.android.data.db.StoreRow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ShoppingListTest {
+    private val produce = CategoryRow("c-produce", "Fruit & vegetables", "produce")
+    private val dairy = CategoryRow("c-dairy", "Dairy & eggs", "dairy")
+    private val canned = CategoryRow("c-canned", "Canned & jarred", "canned")
+    private val spices = CategoryRow("c-condiments", "Oils, spices & sauces", "condiments")
+    private val pantry = CategoryRow("c-pantry", "Pantry", null)
+    private val categories = CategoryIndex(listOf(spices, dairy, produce, canned, pantry))
+
     private val items = listOf(
-        ItemRow("tom", "Tomatoes", "tomatoes", "Produce", "g"),
-        ItemRow("milk", "Milk", "milk", "Dairy", "l"),
-        ItemRow("apple", "apples", "apples", "Produce", null),
-        ItemRow("salt", "Salt", "salt", null, null),
-        ItemRow("beans", "Beans", "beans", "Cans", null),
+        ItemRow("tom", "Tomatoes", "tomatoes", "g"),
+        ItemRow("milk", "Milk", "milk", "l"),
+        ItemRow("apple", "apples", "apples", null),
+        // Picked by hand: wins over the automatic "condiments".
+        ItemRow("salt", "Salt", "salt", null, categoryId = pantry.id),
+        ItemRow("beans", "Beans", "beans", null),
+        ItemRow("thing", "Thingamajig", "thingamajig", null),
+        // Its category was deleted: back to automatic.
+        ItemRow("pepper", "Pepper", "pepper", null, categoryId = "deleted"),
     ).associateBy { it.id }
 
     private var n = 0
@@ -54,6 +67,7 @@ class ShoppingListTest {
                 c("ghost", 1.0, "g"), // item not known locally: skipped
             ),
             items,
+            categories,
         )
         assertEquals(listOf("Tomatoes", "Salt", "Milk"), lines.map { it.name })
         val tom = lines[0]
@@ -70,16 +84,34 @@ class ShoppingListTest {
         assertEquals(1, milk.contributions.size) // archived one is gone
     }
 
+    private fun all() = listOf(
+        c("salt", 1.0, "g"), c("tom", 1.0, "g"), c("apple", 1.0, null), c("beans", 1.0, "can"),
+        c("thing", 1.0, null), c("pepper", 1.0, null), c("milk", 1.0, "l", purchased = true),
+    )
+
     @Test
-    fun sortsByCategoryThenNameWithCheckedLast() {
-        val lines = ShoppingList.lines(
-            listOf(c("salt", 1.0, "g"), c("tom", 1.0, "g"), c("apple", 1.0, null), c("beans", 1.0, "can"), c("milk", 1.0, "l", purchased = true)),
-            items,
+    fun groupsByCategoryInTheDefaultOrderWithCheckedLast() {
+        val lines = ShoppingList.lines(all(), items, categories)
+        // Produce (apples before Tomatoes ignoring case), canned, condiments, the household's own
+        // categories, "Other", then checked.
+        assertEquals(listOf("apples", "Tomatoes", "Beans", "Pepper", "Salt", "Thingamajig", "Milk"), lines.map { it.name })
+        assertEquals(
+            listOf(produce, canned, spices, pantry, null),
+            ShoppingList.groups(lines).map { it.category },
         )
-        // Cans, Produce (apples before Tomatoes ignoring case), uncategorized, then checked.
-        assertEquals(listOf("Beans", "apples", "Tomatoes", "Salt", "Milk"), lines.map { it.name })
-        val groups = ShoppingList.groups(lines)
-        assertEquals(listOf("Cans", "Produce", null), groups.map { it.category })
+        val byName = lines.associateBy { it.name }
+        assertFalse(byName.getValue("Salt").automaticCategory)
+        assertTrue(byName.getValue("Pepper").automaticCategory)
+        assertEquals(dairy, byName.getValue("Milk").category)
+    }
+
+    @Test
+    fun followsTheStoreLayout() {
+        // The layout lists pantry and canned first (and a deleted category); the rest follow in default order.
+        val store = StoreRow("s", "Corner shop", listOf(pantry.id, "deleted", canned.id).joinToString(","))
+        val lines = ShoppingList.lines(all(), items, categories, store)
+        assertEquals(listOf("Salt", "Beans", "apples", "Tomatoes", "Pepper", "Thingamajig", "Milk"), lines.map { it.name })
+        assertEquals(listOf(pantry, canned, produce, spices, null), ShoppingList.groups(lines).map { it.category })
     }
 
     @Test

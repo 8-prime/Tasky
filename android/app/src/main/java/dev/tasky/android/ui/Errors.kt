@@ -3,6 +3,8 @@ package dev.tasky.android.ui
 import android.content.res.Resources
 import dev.tasky.android.R
 import dev.tasky.android.api.ApiException
+import dev.tasky.android.api.Compatibility
+import dev.tasky.android.api.IncompatibleVersionException
 import dev.tasky.api.ErrorCode
 import java.net.UnknownServiceException
 
@@ -15,6 +17,9 @@ fun Resources.errorMessage(e: Throwable): String = when (e) {
         ErrorCode.UsernameTaken -> getString(R.string.error_username_taken)
         else -> getString(R.string.error_server, e.message ?: e.status.toString())
     }
+    is IncompatibleVersionException -> getString(
+        if (e.compatibility == Compatibility.ServerOutdated) R.string.error_server_outdated else R.string.error_app_outdated,
+    )
     is UnknownServiceException -> getString(R.string.error_cleartext)
     else -> getString(R.string.error_network, e.message ?: e.javaClass.simpleName)
 }

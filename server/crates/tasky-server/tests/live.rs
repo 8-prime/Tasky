@@ -34,6 +34,8 @@ async fn members_get_live_change_signals() {
         anna.household
     );
     let mut req = url.clone().into_client_request().unwrap();
+    req.headers_mut()
+        .insert(API_VERSION_HEADER, API_VERSION.to_string().parse().unwrap());
     req.headers_mut().insert(
         "authorization",
         format!("Bearer {}", anna.token).parse().unwrap(),
@@ -62,6 +64,8 @@ async fn members_get_live_change_signals() {
     // Unauthenticated or non-member connections are refused.
     let eve = s.create_household("eve").await;
     let mut req = url.into_client_request().unwrap();
+    req.headers_mut()
+        .insert(API_VERSION_HEADER, API_VERSION.to_string().parse().unwrap());
     req.headers_mut().insert(
         "authorization",
         format!("Bearer {}", eve.token).parse().unwrap(),

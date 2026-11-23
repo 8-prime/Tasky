@@ -21,14 +21,60 @@ pub type Seq = i64;
 /// Money in the currency's minor unit, e.g. cents for EUR. (Mapped to `Long` in Kotlin.)
 pub type MinorUnits = i64;
 
-/// Version of the wire protocol. Bumped on breaking changes.
-pub const API_VERSION: i32 = 1;
+/// Version of the wire protocol this server speaks. Bumped whenever older apps can't work
+/// with the server any more (e.g. new entity kinds they can't decode).
+/// - 1: first release.
+/// - 2: categories and stores.
+pub const API_VERSION: i32 = 2;
+
+/// Oldest app API version this server still accepts. Requests from older apps are refused
+/// with `426 client_outdated`, so the app can tell its user to update.
+pub const MIN_CLIENT_API_VERSION: i32 = 2;
+
+/// Request header carrying the API version the app speaks. Requests without it count as
+/// version 1 (apps from before the header existed). `GET /server-info` works without it.
+pub const API_VERSION_HEADER: &str = "x-tasky-api-version";
+
+/// Response header with the server's `API_VERSION`, on every `/api/v1` response.
+pub const SERVER_API_VERSION_HEADER: &str = "x-tasky-server-api-version";
+
+/// Response header with the server's `MIN_CLIENT_API_VERSION`, on every `/api/v1` response.
+pub const MIN_CLIENT_API_VERSION_HEADER: &str = "x-tasky-min-client-api-version";
 
 /// Namespace for deterministic (UUIDv5) IDs of contributions that come from a
 /// planned meal: `uuidv5(CONTRIBUTION_NAMESPACE, "<plan_entry_id>:<meal_ingredient_id>")`.
 /// If two people add the same planned meal to the list at once, they get the same IDs,
 /// so the ingredients aren't counted twice.
 pub const CONTRIBUTION_NAMESPACE: Uuid = Uuid::from_u128(0x6d1f_3c2a_9b8e_4f6d_a1c3_5e7b_9d2f_4a10);
+
+/// Namespace for the IDs of the built-in categories the server creates in every household:
+/// `uuidv5(CATEGORY_NAMESPACE, "<household_id>:<key>")`.
+pub const CATEGORY_NAMESPACE: Uuid = Uuid::from_u128(0x3b9e_51c7_04d2_4e8a_b6f1_92c4_7d0a_e5f3);
+
+/// The built-in categories as `(key, name)`, in the order a typical supermarket is walked
+/// through. Every household starts with these (see `CategoryData::key`). Clients sort
+/// categories in this order when no store layout is chosen.
+pub const BUILTIN_CATEGORIES: &[(&str, &str)] = &[
+    ("produce", "Fruit & vegetables"),
+    ("bakery", "Bread & bakery"),
+    ("meat_fish", "Meat & fish"),
+    ("dairy", "Dairy & eggs"),
+    ("chilled", "Chilled & deli"),
+    ("breakfast", "Breakfast & spreads"),
+    ("coffee_tea", "Coffee & tea"),
+    ("pasta_rice", "Pasta, rice & grains"),
+    ("baking", "Baking"),
+    ("canned", "Canned & jarred"),
+    ("condiments", "Oils, spices & sauces"),
+    ("international", "International"),
+    ("snacks", "Snacks & sweets"),
+    ("drinks", "Drinks"),
+    ("frozen", "Frozen"),
+    ("household", "Household & cleaning"),
+    ("personal_care", "Personal care"),
+    ("baby", "Baby"),
+    ("pets", "Pets"),
+];
 
 // ───────────────────────────── Errors ─────────────────────────────
 
@@ -53,6 +99,8 @@ pub enum ErrorCode {
     Forbidden,
     NotFound,
     UsernameTaken,
+    /// The app is older than `MIN_CLIENT_API_VERSION` (HTTP 426): it must be updated.
+    ClientOutdated,
     Internal,
 }
 
@@ -63,8 +111,13 @@ pub enum ErrorCode {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ServerInfo {
     pub name: String,
+    /// Release version of the server, e.g. `0.3.0`. For display only.
     pub version: String,
+    /// `API_VERSION`: the wire protocol the server speaks.
     pub api_version: i32,
+    /// `MIN_CLIENT_API_VERSION`: apps speaking an older protocol must update.
+    /// Missing on servers from before API version 2.
+    pub min_client_api_version: Option<i32>,
     pub server_time_ms: Millis,
 }
 
@@ -222,6 +275,8 @@ pub enum EntityKind {
     PlanEntry,
     ListEntry,
     Expense,
+    Category,
+    Store,
 }
 
 impl EntityKind {
@@ -235,6 +290,8 @@ impl EntityKind {
             EntityKind::PlanEntry => "plan_entry",
             EntityKind::ListEntry => "list_entry",
             EntityKind::Expense => "expense",
+            EntityKind::Category => "category",
+            EntityKind::Store => "store",
         }
     }
 
@@ -248,6 +305,8 @@ impl EntityKind {
             "plan_entry" => EntityKind::PlanEntry,
             "list_entry" => EntityKind::ListEntry,
             "expense" => EntityKind::Expense,
+            "category" => EntityKind::Category,
+            "store" => EntityKind::Store,
             _ => return None,
         })
     }
@@ -259,10 +318,36 @@ impl EntityKind {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ItemData {
     pub name: String,
-    /// Free text used for grouping and sorting, e.g. "Produce" or "Dairy".
+    /// Legacy free-text category from before category entities. The server converted it to
+    /// `category_id` once; current clients ignore it and never set it.
     pub category: Option<String>,
     /// Unit suggested when this item is added (see the recommended unit codes in docs/API.md).
     pub default_unit: Option<String>,
+    /// Category chosen by a person. Null means "automatic": clients derive the category from
+    /// the name (see docs/API.md, "Categories"), so a manual choice always wins.
+    pub category_id: Option<Uuid>,
+}
+
+/// A section of a shop, e.g. "Dairy & eggs". Every household starts with the built-in ones
+/// (`BUILTIN_CATEGORIES`); members can rename them, delete them and add their own.
+#[typeshare]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CategoryData {
+    pub name: String,
+    /// Built-in category this is (`"dairy"`), which automatic categorization maps names to.
+    /// Null for categories people created. Set on create; can't be changed later.
+    pub key: Option<String>,
+}
+
+/// A shop the household goes to, with the order its categories are laid out in, so the list
+/// can be sorted along the way through the store.
+#[typeshare]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StoreData {
+    pub name: String,
+    /// Category IDs in walking order. Categories missing here come after these, in the
+    /// default order. Replaced as a whole when edited. May mention deleted categories.
+    pub category_order: Vec<Uuid>,
 }
 
 /// What a list holds. The kind is chosen when the list is created and can't be changed later.
@@ -421,6 +506,8 @@ pub enum EntityData {
     PlanEntry(PlanEntryData),
     ListEntry(ListEntryData),
     Expense(ExpenseData),
+    Category(CategoryData),
+    Store(StoreData),
 }
 
 impl EntityData {
@@ -434,6 +521,8 @@ impl EntityData {
             EntityData::PlanEntry(_) => EntityKind::PlanEntry,
             EntityData::ListEntry(_) => EntityKind::ListEntry,
             EntityData::Expense(_) => EntityKind::Expense,
+            EntityData::Category(_) => EntityKind::Category,
+            EntityData::Store(_) => EntityKind::Store,
         }
     }
 }
@@ -446,8 +535,26 @@ impl EntityData {
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum ItemField {
     Name(String),
+    /// Legacy, see `ItemData::category`.
     Category(Option<String>),
     DefaultUnit(Option<String>),
+    /// Set a category by hand, or `null` to go back to automatic.
+    CategoryId(Option<Uuid>),
+}
+
+#[typeshare]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum CategoryField {
+    Name(String),
+}
+
+#[typeshare]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum StoreField {
+    Name(String),
+    CategoryOrder(Vec<Uuid>),
 }
 
 #[typeshare]
@@ -548,6 +655,8 @@ pub enum OpAction {
     SetPlanEntry(PlanEntryField),
     SetListEntry(ListEntryField),
     SetExpense(ExpenseField),
+    SetCategory(CategoryField),
+    SetStore(StoreField),
 }
 
 /// A single change made by a client. Applying an op twice has no extra effect,

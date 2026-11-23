@@ -15,6 +15,9 @@ Tasky is a shared weekly meal planner and shopping list for a household. It has 
 | Lists | Shared lists of three kinds: grocery ("Groceries" by default), checklist and text note. A line is an item, and its amount is the sum of its contributions, so amounts from different meals add up. Personal meals feed the shared list too. |
 | Adding to the list | Explicit: per plan entry or for a whole week, and the user can untick what they already have. No pantry tracking; people check off what they already have at home. |
 | Expenses | A shared expense book: who paid, and which members share the cost (equally). "Whole household" is the member list at the time. Balances per currency are computed on the client with integer cents; repayments are recorded as settlements. Receipt scanning and per-item splits come later. |
+| Categories | Every household starts with built-in categories (fruit & vegetables, dairy, …) and can rename, delete and add its own. Categories are entities with IDs, so renaming one doesn't break anything that refers to it. Items are categorized automatically from their name on the client (English and German keywords). A category picked by hand is stored on the item and always wins; there's no stored "automatic" value, so better guessing in a newer app also improves old items. |
+| Store layouts | A `store` holds the order its categories are walked in. Each phone picks the store it's shopping in (a device setting), and the list is grouped by category in that order. Planned next: item locations per store (aisle/shelf or coordinates) and a route through the store. They would be a separate entity keyed by store and item, so a store layout stays the fallback for items without a known location. |
+| Versions | App and server exchange an integer API version on every request/response. A server refuses apps that are too old (`426 client_outdated`); an app stops syncing with a server that's too old. Either way the app shows who has to update and keeps local edits queued until versions fit. |
 | Units | Metric. Converted within a dimension (g/kg, ml/l/tsp/tbsp, pcs); different dimensions are shown side by side. |
 | Language | English. All strings live in Android resources. |
 
@@ -47,6 +50,7 @@ server/crates/tasky-server/src/
   lib.rs          AppState + build()
   routes/         auth, account (me/sessions), household (+invites), sync
   sync.rs         op application (LWW), validation, change feed
+  categories.rs   built-in categories, one-time upgrade of older households
   hlc.rs          HLC validation
   live.rs         per-household broadcast + WebSocket
   auth.rs         passwords, sessions, AuthUser extractor

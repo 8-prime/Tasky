@@ -29,6 +29,16 @@ data class AuthResponse (
 	val households: List<Household>
 )
 
+/// A section of a shop, e.g. "Dairy & eggs". Every household starts with the built-in ones
+/// (`BUILTIN_CATEGORIES`); members can rename them, delete them and add their own.
+@Serializable
+data class CategoryData (
+	val name: String,
+	/// Built-in category this is (`"dairy"`), which automatic categorization maps names to.
+	/// Null for categories people created. Set on create; can't be changed later.
+	val key: String? = null
+)
+
 /// `POST /api/v1/me/password`
 @Serializable
 data class ChangePasswordRequest (
@@ -94,6 +104,12 @@ sealed class EntityData {
 	@Serializable
 	@SerialName("expense")
 	data class Expense(val value: ExpenseData): EntityData()
+	@Serializable
+	@SerialName("category")
+	data class Category(val value: CategoryData): EntityData()
+	@Serializable
+	@SerialName("store")
+	data class Store(val value: StoreData): EntityData()
 }
 
 /// Current state of a synced entity.
@@ -128,6 +144,9 @@ enum class ErrorCode(val string: String) {
 	NotFound("not_found"),
 	@SerialName("username_taken")
 	UsernameTaken("username_taken"),
+	/// The app is older than `MIN_CLIENT_API_VERSION` (HTTP 426): it must be updated.
+	@SerialName("client_outdated")
+	ClientOutdated("client_outdated"),
 	@SerialName("internal")
 	Internal("internal"),
 }
@@ -221,10 +240,14 @@ data class ItemAlias (
 @Serializable
 data class ItemData (
 	val name: String,
-	/// Free text used for grouping and sorting, e.g. "Produce" or "Dairy".
+	/// Legacy free-text category from before category entities. The server converted it to
+	/// `category_id` once; current clients ignore it and never set it.
 	val category: String? = null,
 	/// Unit suggested when this item is added (see the recommended unit codes in docs/API.md).
-	val default_unit: String? = null
+	val default_unit: String? = null,
+	/// Category chosen by a person. Null means "automatic": clients derive the category from
+	/// the name (see docs/API.md, "Categories"), so a manual choice always wins.
+	val category_id: String? = null
 )
 
 /// `POST /api/v1/auth/join`
@@ -365,6 +388,12 @@ sealed class OpAction {
 	@Serializable
 	@SerialName("set_expense")
 	data class SetExpense(val value: ExpenseField): OpAction()
+	@Serializable
+	@SerialName("set_category")
+	data class SetCategory(val value: CategoryField): OpAction()
+	@Serializable
+	@SerialName("set_store")
+	data class SetStore(val value: StoreField): OpAction()
 }
 
 /// A single change made by a client. Applying an op twice has no extra effect,
@@ -440,8 +469,13 @@ data class RejectedOp (
 @Serializable
 data class ServerInfo (
 	val name: String,
+	/// Release version of the server, e.g. `0.3.0`. For display only.
 	val version: String,
+	/// `API_VERSION`: the wire protocol the server speaks.
 	val api_version: Int,
+	/// `MIN_CLIENT_API_VERSION`: apps speaking an older protocol must update.
+	/// Missing on servers from before API version 2.
+	val min_client_api_version: Int? = null,
 	val server_time_ms: Long
 )
 
@@ -454,6 +488,16 @@ data class Session (
 	val last_seen_at_ms: Long,
 	/// True for the session that made this request.
 	val current: Boolean
+)
+
+/// A shop the household goes to, with the order its categories are laid out in, so the list
+/// can be sorted along the way through the store.
+@Serializable
+data class StoreData (
+	val name: String,
+	/// Category IDs in walking order. Categories missing here come after these, in the
+	/// default order. Replaced as a whole when edited. May mention deleted categories.
+	val category_order: List<String>
 )
 
 /// `POST /api/v1/households/{household_id}/sync`: sends local ops and pulls remote changes in one round trip.
@@ -501,6 +545,13 @@ data class UpdateMeRequest (
 )
 
 @Serializable
+sealed class CategoryField {
+	@Serializable
+	@SerialName("name")
+	data class Name(val value: String): CategoryField()
+}
+
+@Serializable
 sealed class ContributionField {
 	@Serializable
 	@SerialName("list_id")
@@ -541,6 +592,10 @@ enum class EntityKind(val string: String) {
 	ListEntry("list_entry"),
 	@SerialName("expense")
 	Expense("expense"),
+	@SerialName("category")
+	Category("category"),
+	@SerialName("store")
+	Store("store"),
 }
 
 @Serializable
@@ -576,12 +631,17 @@ sealed class ItemField {
 	@Serializable
 	@SerialName("name")
 	data class Name(val value: String): ItemField()
+	/// Legacy, see `ItemData::category`.
 	@Serializable
 	@SerialName("category")
 	data class Category(val value: String?): ItemField()
 	@Serializable
 	@SerialName("default_unit")
 	data class DefaultUnit(val value: String?): ItemField()
+	/// Set a category by hand, or `null` to go back to automatic.
+	@Serializable
+	@SerialName("category_id")
+	data class CategoryId(val value: String?): ItemField()
 }
 
 @Serializable
@@ -663,5 +723,15 @@ sealed class PlanEntryField {
 	@Serializable
 	@SerialName("note")
 	data class Note(val value: String?): PlanEntryField()
+}
+
+@Serializable
+sealed class StoreField {
+	@Serializable
+	@SerialName("name")
+	data class Name(val value: String): StoreField()
+	@Serializable
+	@SerialName("category_order")
+	data class CategoryOrder(val value: List<String>): StoreField()
 }
 

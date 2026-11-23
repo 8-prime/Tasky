@@ -68,7 +68,7 @@ class SyncEngineTest {
         Entity(id, seq, deleted, data, "u", now)
 
     private fun op(id: String, action: OpAction) = Op(id, hlc.next(), action)
-    private fun item(name: String, category: String? = null) = EntityData.Item(ItemData(name, category))
+    private fun item(name: String, category: String? = null) = EntityData.Item(ItemData(name, category_id = category))
     private suspend fun visible(kind: EntityKind, id: String) = db.entities().getVisible(kind, id)
     private suspend fun outboxSize() = db.outbox().count()
 
@@ -98,11 +98,11 @@ class SyncEngineTest {
             round++
             if (round == 1) {
                 // The user edits while the request is in flight.
-                store.commit(listOf(op("i1", OpAction.SetItem(ItemField.Category("Dairy")))))
+                store.commit(listOf(op("i1", OpAction.SetItem(ItemField.CategoryId("Dairy")))))
                 response(listOf(entity("i1", 1, item("Milk"))), cursor = 1)
             } else {
                 assertEquals(1L, req.since)
-                assertEquals(OpAction.SetItem(ItemField.Category("Dairy")), req.ops!!.single().action)
+                assertEquals(OpAction.SetItem(ItemField.CategoryId("Dairy")), req.ops!!.single().action)
                 response(listOf(entity("i1", 2, item("Milk", "Dairy"))), cursor = 2)
             }
         }
@@ -144,7 +144,7 @@ class SyncEngineTest {
     fun staleOpWithoutAChangeFallsBackToServerState() = runBlocking {
         handler = { response(listOf(entity("i1", 1, item("Milk", "Dairy"))), cursor = 1) }
         engine.sync()
-        store.commit(listOf(op("i1", OpAction.SetItem(ItemField.Category("Drinks")))))
+        store.commit(listOf(op("i1", OpAction.SetItem(ItemField.CategoryId("Drinks")))))
         assertEquals(item("Milk", "Drinks"), visible(EntityKind.Item, "i1"))
         // The server ignored the op as stale (someone wrote a newer value already): no change.
         handler = { response(cursor = 1) }
@@ -206,7 +206,7 @@ class SyncEngineTest {
         engine.sync()
         // Offline edit, then the server turns out to have been restored from a backup.
         handler = { throw java.io.IOException("offline") }
-        store.commit(listOf(op("i1", OpAction.SetItem(ItemField.Category("Dairy")))))
+        store.commit(listOf(op("i1", OpAction.SetItem(ItemField.CategoryId("Dairy")))))
         runCatching { engine.sync() }
         handler = { req ->
             assertEquals(6L, req.since)
@@ -229,7 +229,7 @@ class SyncEngineTest {
             if (req.since == 6L) response(listOf(entity("i1", 1, item("Milk"))), cursor = 1, hasMore = true, fullResync = true)
             else response(listOf(entity("i1", 2, item("Milk", "Dairy"))), cursor = 2)
         }
-        store.commit(listOf(op("i1", OpAction.SetItem(ItemField.Category("Dairy")))))
+        store.commit(listOf(op("i1", OpAction.SetItem(ItemField.CategoryId("Dairy")))))
         engine.sync()
         assertNull(visible(EntityKind.Item, "old"))
         assertEquals(item("Milk", "Dairy"), visible(EntityKind.Item, "i1"))

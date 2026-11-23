@@ -81,7 +81,6 @@ fun OnboardingScreen(vm: OnboardingViewModel) {
 private fun ErrorText(s: OnboardingState) {
     val text = when {
         s.errorRes != null -> stringResource(s.errorRes)
-        s.error is OnboardingViewModel.UnsupportedApi -> stringResource(R.string.error_api_version, s.error.version)
         s.error != null -> LocalResources.current.errorMessage(s.error)
         else -> null
     }

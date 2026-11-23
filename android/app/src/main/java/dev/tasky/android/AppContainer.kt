@@ -5,6 +5,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import dev.tasky.android.api.ApiClient
+import dev.tasky.android.api.VersionGate
 import dev.tasky.android.data.AccountRepository
 import dev.tasky.android.data.KeystoreSecretBox
 import dev.tasky.android.data.SessionStore
@@ -40,8 +41,11 @@ class AppContainer(private val context: Context) {
 
     val hlc = Hlc(sessions.nodeId, sessions.loadHlcState(), persist = sessions::saveHlcState)
 
+    /** Whether the signed-in server's API version fits this app; drives the "update" banner. */
+    val versionGate = VersionGate()
+
     fun sessionApi(): ApiClient? = sessions.current?.let { s ->
-        ApiClient(http, s.serverUrl, s.token, onUnauthorized = ::onUnauthorized)
+        ApiClient(http, s.serverUrl, s.token, onUnauthorized = ::onUnauthorized, gate = versionGate)
     }
 
     val store = LocalStore(db) { sessions.current?.userId }
@@ -79,6 +83,7 @@ class AppContainer(private val context: Context) {
             if (event.kind == LiveEventKind.Hello) scope.launch { runCatching { account.refreshHousehold() } }
         },
         onUnauthorized = ::onUnauthorized,
+        gate = versionGate,
     )
 
     @Volatile
@@ -120,6 +125,7 @@ class AppContainer(private val context: Context) {
         coordinator.stopForeground()
         SyncWorker.cancel(context)
         sessions.clear()
+        versionGate.reset()
         store.wipeAll()
     }
 }

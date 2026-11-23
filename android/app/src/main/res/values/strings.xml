@@ -28,7 +28,10 @@
     <string name="error_username_taken">That username is already taken.</string>
     <string name="error_server">The server said: %1$s</string>
     <string name="error_not_tasky">This doesn’t look like a Tasky server.</string>
-    <string name="error_api_version">This server speaks API version %1$d, but the app needs version 1.</string>
+    <string name="error_app_outdated">This version of Tasky is too old for the server. Update the app to continue.</string>
+    <string name="error_server_outdated">The server runs an older version of Tasky than this app needs. Whoever runs it has to update it.</string>
+    <string name="banner_app_outdated">Update Tasky: this version is too old for your server. Your changes stay on this phone and sync after the update.</string>
+    <string name="banner_server_outdated">Your Tasky server needs an update to work with this app. Your changes stay on this phone and sync once it’s updated.</string>
     <string name="error_invalid_url">Enter a server address like tasky.example.com.</string>
     <string name="error_username_rules">3–32 characters: letters, digits, dot, dash or underscore.</string>
     <string name="error_password_rules">At least 8 characters.</string>
@@ -87,8 +90,6 @@
         <item quantity="other">Checked (%1$d)</item>
     </plurals>
     <string name="list_checked_by">✓ %1$s</string>
-    <string name="list_category_help">New item. A category like “Produce” groups it on the list.</string>
-    <string name="list_in_category">In %1$s</string>
     <string name="list_added">Added %1$s</string>
     <string name="list_remove_line">Remove from list</string>
     <string name="list_kind_title">Type</string>
@@ -107,6 +108,37 @@
     <string name="note_placeholder">Write something…</string>
     <string name="note_text">Note text</string>
     <string name="list_edit_item">Edit item</string>
+    <!-- Categories and stores -->
+    <string name="category_automatic">Automatic (%1$s)</string>
+    <string name="category_automatic_none">Automatic (none found)</string>
+    <string name="category_of_item">Category: %1$s</string>
+    <string name="category_of_item_auto">Category: %1$s (automatic)</string>
+    <string name="category_new">New category</string>
+    <string name="category_rename">Rename category</string>
+    <string name="category_delete_title">Delete “%1$s”?</string>
+    <string name="category_delete_text">Items put in it by hand go back to automatic. This applies to everyone in the household.</string>
+    <string name="category_pick_title">Category for %1$s</string>
+    <string name="category_pick_help">Automatic picks a category from the name. Your choice is used for this item everywhere.</string>
+    <string name="store_default_order">Default order</string>
+    <string name="store_chip">Store: %1$s</string>
+    <string name="store_choose">Choose store</string>
+    <string name="store_manage">Stores &amp; categories…</string>
+    <string name="stores_title">Stores &amp; categories</string>
+    <string name="stores_section">Stores</string>
+    <string name="stores_help">A store’s layout sorts the list in the order you walk through it. Each phone picks its own store on the list.</string>
+    <string name="stores_none">No stores yet. Without one, the list uses the default order.</string>
+    <string name="store_new">New store</string>
+    <string name="store_rename">Rename store</string>
+    <string name="store_delete">Delete store</string>
+    <string name="store_delete_title">Delete “%1$s”?</string>
+    <string name="store_delete_text">Its layout is removed for everyone in the household.</string>
+    <string name="store_layout_custom">Custom layout</string>
+    <string name="store_layout_help">Put the categories in the order you pass them in this store. The list follows this order when the store is chosen.</string>
+    <string name="store_layout_reset">Reset to default order</string>
+    <string name="store_move_up">Move %1$s up</string>
+    <string name="store_move_down">Move %1$s down</string>
+    <string name="categories_section">Categories</string>
+    <string name="categories_help">Items are sorted into these automatically by name. Long-press an item on the list to choose a different one.</string>
     <!-- Meals -->
     <string name="meals_title">Meals</string>
     <string name="meals_new">New meal</string>

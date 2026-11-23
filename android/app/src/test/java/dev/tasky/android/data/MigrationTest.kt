@@ -69,6 +69,31 @@ class MigrationTest {
         db.close()
     }
 
+    @Test
+    fun v3ToV4ReplacesFreeTextCategoriesAndKeepsTheOutbox() {
+        helper.createDatabase(DB, 3).apply {
+            execSQL("INSERT INTO items (id, name, normName, category, defaultUnit) VALUES ('i1', 'Milk', 'milk', 'Dairy', 'l')")
+            execSQL("INSERT INTO outbox (entityId, op, inFlight) VALUES ('e1', '{\"pending\":true}', 0)")
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(DB, 4, true)
+
+        // The server turns the old text into a category id; until it arrives the item is automatic.
+        db.query("SELECT name, defaultUnit, categoryId FROM items WHERE id = 'i1'").use { c ->
+            c.moveToFirst()
+            assertEquals("Milk", c.getString(0))
+            assertEquals("l", c.getString(1))
+            assertNull(c.getString(2))
+        }
+        db.query("SELECT entityId FROM outbox").use { c ->
+            assertEquals(1, c.count)
+        }
+        db.execSQL("INSERT INTO categories (id, name, `key`) VALUES ('c1', 'Dairy & eggs', 'dairy')")
+        db.execSQL("INSERT INTO stores (id, name, categoryOrder) VALUES ('s1', 'Aldi', 'c1')")
+        db.close()
+    }
+
     private companion object {
         const val DB = "migration-test.db"
     }

@@ -16,6 +16,8 @@ interface EntityDao {
     @Query("SELECT * FROM plan_entries WHERE id = :id") suspend fun planEntry(id: String): PlanEntryRow?
     @Query("SELECT * FROM list_entries WHERE id = :id") suspend fun listEntry(id: String): ListEntryRow?
     @Query("SELECT * FROM expenses WHERE id = :id") suspend fun expense(id: String): ExpenseRow?
+    @Query("SELECT * FROM categories WHERE id = :id") suspend fun category(id: String): CategoryRow?
+    @Query("SELECT * FROM stores WHERE id = :id") suspend fun store(id: String): StoreRow?
 
     @Upsert suspend fun upsert(row: ItemRow)
     @Upsert suspend fun upsert(row: ListRow)
@@ -25,6 +27,8 @@ interface EntityDao {
     @Upsert suspend fun upsert(row: PlanEntryRow)
     @Upsert suspend fun upsert(row: ListEntryRow)
     @Upsert suspend fun upsert(row: ExpenseRow)
+    @Upsert suspend fun upsert(row: CategoryRow)
+    @Upsert suspend fun upsert(row: StoreRow)
 
     @Query("DELETE FROM items WHERE id = :id") suspend fun deleteItem(id: String)
     @Query("DELETE FROM lists WHERE id = :id") suspend fun deleteList(id: String)
@@ -34,6 +38,8 @@ interface EntityDao {
     @Query("DELETE FROM plan_entries WHERE id = :id") suspend fun deletePlanEntry(id: String)
     @Query("DELETE FROM list_entries WHERE id = :id") suspend fun deleteListEntry(id: String)
     @Query("DELETE FROM expenses WHERE id = :id") suspend fun deleteExpense(id: String)
+    @Query("DELETE FROM categories WHERE id = :id") suspend fun deleteCategory(id: String)
+    @Query("DELETE FROM stores WHERE id = :id") suspend fun deleteStore(id: String)
 
     @Query("DELETE FROM items") suspend fun clearItems()
     @Query("DELETE FROM lists") suspend fun clearLists()
@@ -43,6 +49,8 @@ interface EntityDao {
     @Query("DELETE FROM plan_entries") suspend fun clearPlanEntries()
     @Query("DELETE FROM list_entries") suspend fun clearListEntries()
     @Query("DELETE FROM expenses") suspend fun clearExpenses()
+    @Query("DELETE FROM categories") suspend fun clearCategories()
+    @Query("DELETE FROM stores") suspend fun clearStores()
 
     @Query("UPDATE contributions SET itemId = :target WHERE itemId = :alias")
     suspend fun remapContributionItems(alias: String, target: String)
@@ -128,6 +136,12 @@ interface QueryDao {
 
     @Query("SELECT * FROM expenses ORDER BY date DESC, id DESC") fun expenses(): Flow<List<ExpenseRow>>
     @Query("SELECT currency FROM expenses ORDER BY date DESC, id DESC LIMIT 1") suspend fun lastCurrency(): String?
+
+    @Query("SELECT * FROM categories") fun categories(): Flow<List<CategoryRow>>
+    @Query("SELECT * FROM categories") suspend fun categoriesNow(): List<CategoryRow>
+    @Query("SELECT * FROM items WHERE categoryId = :categoryId") suspend fun itemsInCategory(categoryId: String): List<ItemRow>
+    @Query("SELECT * FROM stores ORDER BY name COLLATE NOCASE") fun stores(): Flow<List<StoreRow>>
+    @Query("SELECT * FROM stores WHERE id = :id") fun store(id: String): Flow<StoreRow?>
 
     @Query("SELECT * FROM members ORDER BY joinedAtMs") fun members(): Flow<List<MemberRow>>
     @Query("SELECT COUNT(*) FROM members") suspend fun memberCount(): Int

@@ -1,20 +1,28 @@
 package dev.tasky.android.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.printToString
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import dev.tasky.android.api.Compatibility
 import dev.tasky.android.data.TaskyRepository
+import dev.tasky.android.data.db.CategoryRow
 import dev.tasky.android.data.db.TaskyDatabase
 import dev.tasky.android.domain.MealPlanning
 import dev.tasky.android.sync.Hlc
@@ -81,21 +89,43 @@ class ScreensTest {
 
     private fun waitForDb(check: suspend () -> Boolean) = waitForCondition { runBlocking { check() } }
 
+    /** The built-in categories the server creates, as the app would receive them. */
+    private fun seedCategories() = runBlocking {
+        listOf("produce" to "Fruit & vegetables", "dairy" to "Dairy & eggs", "drinks" to "Drinks")
+            .forEach { (key, name) -> db.entities().upsert(CategoryRow("c-$key", name, key)) }
+    }
+
+    private fun top(text: String) = compose.onNodeWithText(text).fetchSemanticsNode().boundsInRoot.top
+
+    @Test
+    fun versionBannerSaysWhoHasToUpdate() {
+        var status by mutableStateOf(Compatibility.Ok)
+        compose.setContent { TaskyTheme { VersionBanner(status) } }
+        compose.onAllNodes(hasText("update", substring = true, ignoreCase = true)).assertCountEquals(0)
+        status = Compatibility.AppOutdated
+        compose.onNodeWithText("Update Tasky", substring = true).assertExists()
+        status = Compatibility.ServerOutdated
+        compose.onNodeWithText("server needs an update", substring = true).assertExists()
+    }
+
     @Test
     fun shoppingList() {
+        seedCategories()
         runBlocking {
             val list = repo.createList("Groceries")
             repo.createList("Hardware")
-            repo.addToList(list, "Tomatoes", 500.0, "g", category = "Produce")
+            repo.addToList(list, "Tomatoes", 500.0, "g")
             repo.addToList(list, "tomatoes", 2.0, "pcs")
-            repo.addToList(list, "Milk", 1.0, "l", category = "Dairy")
+            repo.addToList(list, "Milk", 1.0, "l")
         }
         val vm = ShoppingListViewModel(repo)
         compose.setContent { TaskyTheme { ShoppingListScreen(vm) } }
         waitFor("500 g + 2 pcs")
         compose.onNodeWithText("Groceries").assertExists()
-        compose.onNodeWithText("Produce").assertExists()
-        compose.onNodeWithText("Dairy").assertExists()
+        // Sorted into categories automatically.
+        compose.onNodeWithText("Fruit & vegetables").assertExists()
+        compose.onNodeWithText("Dairy & eggs").assertExists()
+        compose.onNodeWithText("Store: Default order").assertExists()
 
         // Tap a line to check it off.
         compose.onNodeWithText("Milk").performClick()
@@ -116,6 +146,39 @@ class ScreensTest {
         waitFor("Added Eggs")
         waitForDb { q.itemByNormName("eggs") != null }
         assertTrue(edits >= 4)
+    }
+
+    @Test
+    fun categoriesCanBeChangedAndStoresReorderTheList() {
+        seedCategories()
+        val store = runBlocking {
+            val list = repo.createList("Groceries")
+            repo.addToList(list, "Äpfel", 1.0, "kg")
+            repo.addToList(list, "Hafermilch", 1.0, "l")
+            repo.createStore("Corner shop").also { repo.setStoreOrder(it, listOf("c-dairy", "c-produce")) }
+        }
+        val vm = ShoppingListViewModel(repo)
+        compose.setContent { TaskyTheme { ShoppingListScreen(vm) } }
+        waitFor("Hafermilch")
+        assertTrue(top("Fruit & vegetables") < top("Dairy & eggs"))
+
+        // Long-press the line, open the category picker and move it to Drinks.
+        compose.onNodeWithText("Hafermilch").performTouchInput { longClick() }
+        waitFor("Category: Dairy & eggs (automatic)")
+        compose.onNodeWithText("Category: Dairy & eggs (automatic)").performClick()
+        waitFor("Category for Hafermilch")
+        compose.onNodeWithText("Drinks").performClick()
+        waitForDb { db.queries().itemByNormName("hafermilch")?.categoryId == "c-drinks" }
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("Drinks")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Dairy & eggs").assertDoesNotExist()
+
+        // Choosing the store puts its categories first.
+        runBlocking { repo.setStoreOrder(store, listOf("c-drinks", "c-produce")) }
+        compose.onNodeWithText("Store: Default order").performClick()
+        compose.onNodeWithText("Corner shop").performClick()
+        waitFor("Store: Corner shop")
+        compose.waitUntil(5_000) { runCatching { top("Drinks") < top("Fruit & vegetables") }.getOrDefault(false) }
+        assertEquals(store, runBlocking { repo.selectedStore().first() })
     }
 
     /** Balances and settle-up suggestions follow from the entries (dialog text fields aren't driven, see below). */

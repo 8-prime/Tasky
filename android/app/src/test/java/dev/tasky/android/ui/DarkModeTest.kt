@@ -4,20 +4,21 @@ import android.graphics.Bitmap
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.captureToImage
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import dev.tasky.android.BuildConfig
 import dev.tasky.android.data.AccountRepository
 import dev.tasky.android.data.SessionStore
 import dev.tasky.android.data.TaskyRepository
+import dev.tasky.android.data.db.CategoryRow
+import dev.tasky.android.data.db.MemberRow
 import dev.tasky.android.data.db.TaskyDatabase
 import dev.tasky.android.sync.Hlc
 import dev.tasky.android.sync.LocalStore
-import dev.tasky.android.data.db.MemberRow
 import dev.tasky.android.ui.expenses.ExpensesScreen
 import dev.tasky.android.ui.expenses.ExpensesViewModel
 import dev.tasky.android.ui.list.ShoppingListScreen
@@ -28,6 +29,10 @@ import dev.tasky.android.ui.onboarding.OnboardingScreen
 import dev.tasky.android.ui.onboarding.OnboardingViewModel
 import dev.tasky.android.ui.plan.PlanScreen
 import dev.tasky.android.ui.plan.PlanViewModel
+import dev.tasky.android.ui.stores.StoreEditScreen
+import dev.tasky.android.ui.stores.StoreEditViewModel
+import dev.tasky.android.ui.stores.StoresScreen
+import dev.tasky.android.ui.stores.StoresViewModel
 import dev.tasky.android.ui.theme.TaskyTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -56,6 +61,7 @@ class DarkModeTest {
     private lateinit var repo: TaskyRepository
     private lateinit var checklistId: String
     private lateinit var noteId: String
+    private lateinit var storeId: String
     private val outDir = File(System.getProperty("tasky.screenshots") ?: "build/screenshots/dark")
 
     @Before
@@ -64,8 +70,14 @@ class DarkModeTest {
             .allowMainThreadQueries().build()
         repo = TaskyRepository(LocalStore(db) { "me" }, Hlc("ui")) {}
         runBlocking {
+            BUILTIN_NAMES.forEach { (key, name) -> db.entities().upsert(CategoryRow("c-$key", name, key)) }
             val list = repo.createList("Groceries")
             repo.addToList(list, "Milk", 1.0, "l")
+            for (name in listOf("Äpfel", "Tomaten", "Vollkornbrot", "Hafermilch", "Spaghetti", "Olivenöl", "Toilettenpapier", "Geschenkpapier")) {
+                repo.addToList(list, name, null, null)
+            }
+            storeId = repo.createStore("Corner shop")
+            repo.setStoreOrder(storeId, listOf("c-household", "c-pasta_rice", "c-dairy"))
             checklistId = repo.createList("Weekend", dev.tasky.api.ListKind.Checklist)
             repo.addEntry(checklistId, "Call plumber")
             repo.addEntry(checklistId, "Water plants")
@@ -122,6 +134,28 @@ class DarkModeTest {
     }
 
     @Test
+    fun shoppingListInAStore() {
+        runBlocking { repo.selectStore(storeId) }
+        val vm = ShoppingListViewModel(repo)
+        compose.setContent { TaskyTheme { ShoppingListScreen(vm) } }
+        shoot("list-store", "Store: Corner shop")
+    }
+
+    @Test
+    fun stores() {
+        val vm = StoresViewModel(repo)
+        compose.setContent { TaskyTheme { StoresScreen(vm, onOpenStore = {}, onClose = {}) } }
+        shoot("stores", "Corner shop")
+    }
+
+    @Test
+    fun storeLayout() {
+        val vm = StoreEditViewModel(repo, storeId)
+        compose.setContent { TaskyTheme { StoreEditScreen(vm) {} } }
+        shoot("store-layout", "Household & cleaning")
+    }
+
+    @Test
     fun mealEdit() {
         val vm = MealEditViewModel(repo, null)
         compose.setContent { TaskyTheme { MealEditScreen(vm) {} } }
@@ -172,3 +206,13 @@ internal suspend fun seedExpenses(db: TaskyDatabase, repo: TaskyRepository) {
     repo.createExpense(input("Concert tickets", 5_900, "anna", listOf("ben"), null, 2))
     repo.recordSettlement("ben", "anna", 30_000, "EUR", month.plusDays(3).toString())
 }
+
+/** The built-in categories, as the server creates them. */
+private val BUILTIN_NAMES = listOf(
+    "produce" to "Fruit & vegetables", "bakery" to "Bread & bakery", "meat_fish" to "Meat & fish",
+    "dairy" to "Dairy & eggs", "chilled" to "Chilled & deli", "breakfast" to "Breakfast & spreads",
+    "coffee_tea" to "Coffee & tea", "pasta_rice" to "Pasta, rice & grains", "baking" to "Baking",
+    "canned" to "Canned & jarred", "condiments" to "Oils, spices & sauces", "international" to "International",
+    "snacks" to "Snacks & sweets", "drinks" to "Drinks", "frozen" to "Frozen", "household" to "Household & cleaning",
+    "personal_care" to "Personal care", "baby" to "Baby", "pets" to "Pets",
+)

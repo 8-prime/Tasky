@@ -7,9 +7,9 @@ use axum::{
     Json, Router,
     routing::{delete, get, post},
 };
-use tasky_api::{API_VERSION, ServerInfo};
+use tasky_api::{API_VERSION, MIN_CLIENT_API_VERSION, ServerInfo};
 
-use crate::{AppState, live, util::now_ms};
+use crate::{AppState, live, util::now_ms, version};
 
 pub fn router(state: AppState) -> Router {
     let api = Router::new()
@@ -31,7 +31,8 @@ pub fn router(state: AppState) -> Router {
             post(household::create_invite),
         )
         .route("/households/{household_id}/sync", post(sync::sync))
-        .route("/households/{household_id}/live", get(live::live));
+        .route("/households/{household_id}/live", get(live::live))
+        .layer(axum::middleware::from_fn(version::check));
 
     Router::new()
         .route("/healthz", get(|| async { "ok" }))
@@ -45,6 +46,7 @@ async fn server_info() -> Json<ServerInfo> {
         name: "tasky".into(),
         version: env!("CARGO_PKG_VERSION").into(),
         api_version: API_VERSION,
+        min_client_api_version: Some(MIN_CLIENT_API_VERSION),
         server_time_ms: now_ms(),
     })
 }

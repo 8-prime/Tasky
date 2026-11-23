@@ -13,9 +13,29 @@ data class ItemRow(
     @PrimaryKey val id: String,
     val name: String,
     val normName: String,
-    val category: String?,
     val defaultUnit: String?,
+    /** Category chosen by hand; null means automatic (see [dev.tasky.android.domain.Categorizer]). */
+    val categoryId: String? = null,
 )
+
+/** A section of a shop. [key] names a built-in category (`dairy`), null for ones people added. */
+@Entity(tableName = "categories")
+data class CategoryRow(
+    @PrimaryKey val id: String,
+    val name: String,
+    val key: String?,
+)
+
+/** A shop and the order its categories are laid out in. */
+@Entity(tableName = "stores")
+data class StoreRow(
+    @PrimaryKey val id: String,
+    val name: String,
+    /** Category ids in walking order, comma-separated (UUIDs never contain commas). */
+    val categoryOrder: String,
+) {
+    val order: List<String> get() = categoryOrder.split(',').filter { it.isNotEmpty() }
+}
 
 @Entity(tableName = "lists")
 data class ListRow(

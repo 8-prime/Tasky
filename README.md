@@ -6,6 +6,7 @@ Weekly meal planning, shared shopping lists and a shared expense book for a hous
 - Keep a catalog of known meals with ingredients (amount + unit).
 - Track household expenses: who paid, who shares the cost, and who owes whom.
 - Add planned meals to the shared shopping list. Amounts of the same item add up across meals.
+- The list sorts itself into categories (automatically from the item name, or picked by hand) and follows the layout of the store you're in.
 - Several people can edit the list at once without losing anything: entities are identified by ID and merged field by field, never by position.
 
 Docs: [architecture & decisions](docs/ARCHITECTURE.md) · [API & sync protocol](docs/API.md)

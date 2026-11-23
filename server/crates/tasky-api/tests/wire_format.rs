@@ -13,8 +13,9 @@ fn create_op() {
         hlc: "0193a4f1c2d0-0000-7f3a9c01e5b24d88".into(),
         action: OpAction::Create(EntityData::Item(ItemData {
             name: "Milk".into(),
-            category: Some("Dairy".into()),
+            category: None,
             default_unit: None,
+            category_id: Some(ID),
         })),
     };
     assert_eq!(
@@ -23,7 +24,10 @@ fn create_op() {
             "entity_id": "0193a4f1-c2d0-7000-8000-000000000001",
             "hlc": "0193a4f1c2d0-0000-7f3a9c01e5b24d88",
             "action": {"type": "create", "value": {
-                "type": "item", "value": {"name": "Milk", "category": "Dairy", "default_unit": null}
+                "type": "item", "value": {
+                    "name": "Milk", "category": null, "default_unit": null,
+                    "category_id": "0193a4f1-c2d0-7000-8000-000000000001"
+                }
             }}
         })
     );
@@ -58,7 +62,8 @@ fn optional_fields_may_be_omitted_by_clients() {
         EntityData::Item(ItemData {
             name: "Eggs".into(),
             category: None,
-            default_unit: None
+            default_unit: None,
+            category_id: None
         })
     );
     let req: SyncRequest = serde_json::from_value(json!({"since": 0})).unwrap();
@@ -129,4 +134,40 @@ fn contribution_id_example() {
     );
     // Test vector for clients, also listed in docs/API.md.
     assert_eq!(id.to_string(), "79f48edd-396a-5e27-b339-9c3997d57a61");
+}
+
+#[test]
+fn category_and_store_shapes() {
+    let category = EntityData::Category(CategoryData {
+        name: "Dairy & eggs".into(),
+        key: Some("dairy".into()),
+    });
+    assert_eq!(
+        serde_json::to_value(&category).unwrap(),
+        json!({"type": "category", "value": {"name": "Dairy & eggs", "key": "dairy"}})
+    );
+    let store = EntityData::Store(StoreData {
+        name: "Aldi".into(),
+        category_order: vec![ID],
+    });
+    assert_eq!(
+        serde_json::to_value(&store).unwrap(),
+        json!({"type": "store", "value": {
+            "name": "Aldi", "category_order": ["0193a4f1-c2d0-7000-8000-000000000001"]
+        }})
+    );
+    assert_eq!(
+        serde_json::to_value(OpAction::SetStore(StoreField::CategoryOrder(vec![ID]))).unwrap(),
+        json!({"type": "set_store", "value": {
+            "type": "category_order", "value": ["0193a4f1-c2d0-7000-8000-000000000001"]
+        }})
+    );
+    assert_eq!(
+        serde_json::to_value(OpAction::SetItem(ItemField::CategoryId(None))).unwrap(),
+        json!({"type": "set_item", "value": {"type": "category_id", "value": null}})
+    );
+    assert_eq!(
+        serde_json::to_value(OpAction::Delete(EntityKind::Category)).unwrap(),
+        json!({"type": "delete", "value": "category"})
+    );
 }
