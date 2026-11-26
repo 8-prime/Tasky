@@ -8,7 +8,7 @@ Weekly meal planning, shared shopping lists and a shared expense book for a hous
 - Add planned meals to the shared shopping list. Amounts of the same item add up across meals.
 - Several people can edit the list at once without losing anything: entities are identified by ID and merged field by field, never by position.
 
-Docs: [architecture & decisions](docs/ARCHITECTURE.md) · [API & sync protocol](docs/API.md)
+Docs: [architecture & decisions](docs/ARCHITECTURE.md) · [API & sync protocol](docs/API.md) · [Google Play publishing](docs/PLAY_STORE.md)
 
 ## Run the server
 
@@ -35,6 +35,7 @@ cargo build --release      # or: cargo zigbuild --release --target x86_64-unknow
 | `--database` / `TASKY_DATABASE` | `tasky.db` | SQLite file (created if missing) |
 | `--setup-token` / `TASKY_SETUP_TOKEN` | random | Fixed, reusable household-creation token. If unset, a single-use token is logged at startup and after each use |
 | `--invite-ttl-hours` / `TASKY_INVITE_TTL_HOURS` | `48` | Invite code lifetime |
+| `--contact` / `TASKY_CONTACT` | – | How to reach the operator (e.g. an email), shown on `/privacy` and `/delete-account` |
 | `RUST_LOG` | `info` | Log filter |
 
 On startup the server logs:
@@ -44,6 +45,10 @@ INFO tasky_server::setup_token: household creation token (single use): tsk_…
 ```
 
 Use that token in the app to create your household, then invite everyone else from the app.
+
+**Public pages:** `/privacy` (privacy policy) and `/delete-account` (delete an account with username and password, without the app). App stores link to both.
+
+**Demo account** for app-store reviewers: `tasky-server seed-demo` creates the user `playreview` (and `playreview-partner`) in a "Demo household" full of sample data. Running it again resets everything a reviewer changed. With Docker: `docker compose exec -e TASKY_DEMO_PASSWORD=… tasky tasky-server seed-demo`.
 
 **TLS:** Android blocks plain HTTP by default, so put the server behind a reverse proxy with HTTPS (WebSockets must be passed through). For example, with Caddy:
 

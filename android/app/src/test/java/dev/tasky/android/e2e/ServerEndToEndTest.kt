@@ -321,6 +321,29 @@ class ServerEndToEndTest {
     }
 
     @Test
+    fun deletedAccountLeavesSharedDataWithTheOthers() = runBlocking {
+        val (a, b) = household()
+        syncAll(a, b)
+        a.repo.addToList(a.groceries().id, "Milk", 1.0, "l")
+        syncAll(a, b)
+
+        val wrong = runCatching { a.api.deleteAccount(dev.tasky.api.DeleteAccountRequest("not my password")) }.exceptionOrNull()
+        assertEquals(ErrorCode.InvalidCredentials, (wrong as ApiException).code)
+        assertFalse(a.unauthorized)
+
+        a.api.deleteAccount(dev.tasky.api.DeleteAccountRequest("password-a"))
+        val after = runCatching { a.engine.sync() }.exceptionOrNull()
+        assertTrue(after is ApiException && after.isUnauthorized)
+
+        // Ben now owns the household and still has the list.
+        val details = b.api.household(b.session.householdId)
+        assertEquals(listOf(b.session.userId), details.members.map { it.user_id })
+        assertEquals(dev.tasky.api.Role.Owner, details.members.single().role)
+        b.engine.sync()
+        assertEquals("Milk", b.lines(b.groceries().id).single().name)
+    }
+
+    @Test
     fun checklistsAndNotesSyncBetweenDevices() = runBlocking {
         val (a, b) = household()
         syncAll(a, b)

@@ -38,6 +38,7 @@ Kotlin models generated from them are in [`api/kotlin/TaskyApi.kt`](../api/kotli
 | `GET /me` | ✓ | → `MeResponse` |
 | `PATCH /me` | ✓ | `UpdateMeRequest` → `MeResponse` |
 | `POST /me/password` | ✓ | `ChangePasswordRequest` → 204 |
+| `POST /me/delete` | ✓ | `DeleteAccountRequest` → 204 (see [Deleting an account](#deleting-an-account)) |
 | `GET /sessions` | ✓ | → `[Session]` |
 | `DELETE /sessions/{id}` | ✓ | → 204 (own sessions only) |
 | `GET /households/{hid}` | member | → `HouseholdDetails` (name + members) |
@@ -61,6 +62,16 @@ Rules:
 - Display names: 1–64 characters.
 
 `AuthResponse.households` lists the user's households. v1 has exactly one household per user.
+
+### Deleting an account
+
+`POST /me/delete` with the current password (wrong password → 401 `invalid_credentials`, the session stays valid).
+The same is available without the app on the HTML page `GET/POST /delete-account` (username + password).
+
+- Removed: the user (username, display name, password hash), all their sessions, invites they created, and plan entries owned by them (deleted as tombstones, so other devices drop them on the next sync).
+- If they were the last member, the household and everything in it are deleted.
+- Otherwise shared data stays. If no owner is left, the longest-standing member becomes owner. Members get `household_changed` and `changed` live events.
+- Expenses keep the deleted user's ID in `paid_by` / `split_among` so balances don't change. That ID is no longer in `HouseholdDetails.members`; show it as an unknown person. Edits to such an expense that still name the deleted user are rejected (`invalid_reference`), because only current members are valid.
 
 ## Data model (synced entities)
 

@@ -66,6 +66,14 @@ data class CreateHouseholdRequest (
 	val device_name: String
 )
 
+/// `POST /api/v1/me/delete`: deletes the account for good. See docs/API.md for what happens
+/// to the household data.
+@Serializable
+data class DeleteAccountRequest (
+	/// Current password, as a confirmation.
+	val password: String
+)
+
 /// Full data of a synced entity, tagged by kind:
 /// `{"type": "item", "value": {"name": "Milk", ...}}`.
 @Serializable

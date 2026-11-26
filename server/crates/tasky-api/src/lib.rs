@@ -145,6 +145,15 @@ pub struct ChangePasswordRequest {
     pub new_password: String,
 }
 
+/// `POST /api/v1/me/delete`: deletes the account for good. See docs/API.md for what happens
+/// to the household data.
+#[typeshare]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DeleteAccountRequest {
+    /// Current password, as a confirmation.
+    pub password: String,
+}
+
 /// An item from `GET /api/v1/sessions`.
 #[typeshare]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

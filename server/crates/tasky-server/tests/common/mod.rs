@@ -28,6 +28,7 @@ impl TestServer {
             database: dir.path().join("tasky.db").to_string_lossy().into_owned(),
             setup_token,
             invite_ttl_hours: 48,
+            contact: Some("admin@example.com".into()),
         };
         let (app, state, shutdown) = tasky_server::build(config).await.unwrap();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

@@ -3,6 +3,8 @@
 pub mod auth;
 pub mod config;
 pub mod db;
+pub mod deletion;
+pub mod demo;
 pub mod error;
 pub mod hlc;
 pub mod invite;

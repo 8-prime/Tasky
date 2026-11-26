@@ -82,6 +82,28 @@ class HouseholdViewModel(private val c: AppContainer) : ViewModel() {
     }
     fun logout() = run { c.logout() }
 
+    private val _deleteError = MutableStateFlow<Throwable?>(null)
+    /** Error of the last delete-account attempt, shown inside its dialog. */
+    val deleteError: StateFlow<Throwable?> = _deleteError.asStateFlow()
+
+    fun deleteAccount(password: String) {
+        if (_busy.value) return
+        _busy.value = true
+        _deleteError.value = null
+        viewModelScope.launch {
+            try {
+                c.deleteAccount(password)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _deleteError.value = e
+            } finally {
+                _busy.value = false
+            }
+        }
+    }
+
+    fun dismissDeleteError() { _deleteError.value = null }
+
     /** `tasky://join?server=<url>&code=<code>` */
     fun inviteLink(code: String): String {
         val server = c.sessions.current?.serverUrl.orEmpty()

@@ -5,7 +5,8 @@ everything you see comes from a local Room database, every edit is applied local
 and queued, and a sync engine exchanges the queue with the server
 (see [docs/API.md](../docs/API.md)). No Firebase or Google Play Services.
 
-- Application id `dev.tasky.android` (debug builds: `dev.tasky.android.debug`), minSdk 26, compile/target SDK 37.
+- Application id `dev.eightprime.tasky` (debug builds: `dev.eightprime.tasky.debug`), minSdk 26, compile/target SDK 37.
+  The Kotlin namespace stays `dev.tasky.android`; it is internal and independent of the application id.
 - Default server: `https://tasky.8-prime.dev`, changeable on the first screen ("Change server").
 
 ## Build
@@ -27,6 +28,10 @@ Build options (Gradle properties):
 |---|---|---|
 | `-PtaskyServerUrl=…` | `https://tasky.8-prime.dev` | Server prefilled in onboarding (`BuildConfig.DEFAULT_SERVER_URL`) |
 | `-PtaskyKeystoreProperties=…` | `~/.config/tasky-android/keystore.properties` | Release signing config |
+| `-PtaskyVersionCode=…` / `-PtaskyVersionName=…` | `5` / `0.3.0` | Set by CI; every Play upload needs a higher version code |
+
+`./gradlew bundleRelease` builds the App Bundle for Google Play (`app/build/outputs/bundle/release/app-release.aab`).
+CI builds, signs and uploads it; see [docs/PLAY_STORE.md](../docs/PLAY_STORE.md).
 
 ### Release signing
 

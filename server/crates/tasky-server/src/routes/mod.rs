@@ -1,6 +1,7 @@
 mod account;
 mod auth;
 mod household;
+mod pages;
 mod sync;
 
 use axum::{
@@ -20,6 +21,7 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/logout", post(auth::logout))
         .route("/me", get(account::me).patch(account::update_me))
         .route("/me/password", post(account::change_password))
+        .route("/me/delete", post(account::delete_account))
         .route("/sessions", get(account::sessions))
         .route("/sessions/{session_id}", delete(account::revoke_session))
         .route(
@@ -35,6 +37,11 @@ pub fn router(state: AppState) -> Router {
 
     Router::new()
         .route("/healthz", get(|| async { "ok" }))
+        .route("/privacy", get(pages::privacy))
+        .route(
+            "/delete-account",
+            get(pages::delete_account_form).post(pages::delete_account),
+        )
         .nest("/api/v1", api)
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state)

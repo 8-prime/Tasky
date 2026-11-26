@@ -12,6 +12,8 @@ services:
       # Optional: a fixed, reusable household-creation token instead of the
       # random single-use one printed in the log (`docker compose logs tasky`).
       # TASKY_SETUP_TOKEN: change-me
+      # Optional: how to reach you, shown on /privacy and /delete-account.
+      # TASKY_CONTACT: you@example.com
 
 volumes:
   tasky-data:

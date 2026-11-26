@@ -30,11 +30,13 @@ android {
     buildToolsVersion = "37.0.0"
 
     defaultConfig {
-        applicationId = "dev.tasky.android"
+        applicationId = "dev.eightprime.tasky"
         minSdk = 26
         targetSdk = 37
-        versionCode = 5
-        versionName = "0.3.0"
+        // CI passes -PtaskyVersionCode / -PtaskyVersionName (see .github/workflows/android.yml);
+        // every upload to Google Play needs a higher versionCode than the last one.
+        versionCode = providers.gradleProperty("taskyVersionCode").map(String::toInt).getOrElse(5)
+        versionName = providers.gradleProperty("taskyVersionName").getOrElse("0.3.0")
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"$taskyServerUrl\"")
     }
 
